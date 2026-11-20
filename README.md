@@ -50,18 +50,21 @@ Everything except the **Harness VP** checkbox works without further setup. The s
 
 The composer drives `smu-vp`, the SMC + SEP virtual platform in tt-oca-harness-model.
 
-1. **Get the model with the INI fix.** smu-vp currently ignores `[double]` INI sections, so the injected link delay never reaches the AoU model. The fix is in [tenstorrent/tt-oca-harness-model#284](https://github.com/tenstorrent/tt-oca-harness-model/pull/284). Until it is merged, check out the branch:
+1. **Get the model with the composer's two changes.** Both are on the `feat/mdie-vp` branch of [kadomoto/tt-oca-harness-model](https://github.com/kadomoto/tt-oca-harness-model/tree/feat/mdie-vp):
+
+   - the `[double]` INI fix ([tenstorrent/tt-oca-harness-model#284](https://github.com/tenstorrent/tt-oca-harness-model/pull/284)): without it, smu-vp ignores the injected link delay;
+   - `mdie-vp`, the two-die platform with the dies' AoUs connected to each other.
 
    ```bash
    mkdir -p upstream && cd upstream
    git clone https://github.com/tenstorrent/tt-oca-harness-model
    cd tt-oca-harness-model
-   git fetch https://github.com/kadomoto/tt-oca-harness-model fix/smu-vp-ini-double
+   git fetch https://github.com/kadomoto/tt-oca-harness-model feat/mdie-vp
    git checkout FETCH_HEAD
    git submodule update --init --recursive
    ```
 
-   The two-die platform, `mdie-vp`, is on a follow-up branch, `feat/mdie-vp`, which is not published yet. Without it, the composer still works and runs each link as a single-die latency probe against the AoU stub peer.
+   On a checkout without `mdie-vp`, the composer still works and runs each link as a single-die latency probe against the AoU stub peer.
 
 2. **Install the toolchain** that tt-oca-harness-model's CI uses:
 
