@@ -322,13 +322,11 @@ function exampleDesign(){
       {id:'c1', name:'Compute1', kind:'compute', x_mm:12, y_mm:19, w_mm:10, h_mm:10, ucie_ports:4, power_w:60, scenario:'smu-traffic-test'},
       {id:'m0', name:'Mem0', kind:'memory', x_mm:24, y_mm:3, w_mm:7, h_mm:9, ucie_ports:2, power_w:12, scenario:'smu-mailbox-test'},
       {id:'m1', name:'Mem1', kind:'memory', x_mm:24, y_mm:20, w_mm:7, h_mm:9, ucie_ports:2, power_w:12, scenario:'smu-mailbox-test'},
-      {id:'r0', name:'Radio0', kind:'radio', x_mm:4, y_mm:2.5, w_mm:5, h_mm:5, ucie_ports:2, power_w:3, scenario:'smu-aou-ext-test',
-       ...(CAT?.chiplets.find(t => t.kind === 'radio')?.logic ? {logic: structuredClone(CAT.chiplets.find(t => t.kind === 'radio').logic)} : {})},
     ],
     links: [
       {id:'l0', a:'io0', b:'c0', modules:1}, {id:'l1', a:'io0', b:'c1', modules:1},
       {id:'l2', a:'c0', b:'c1', modules:1}, {id:'l3', a:'c0', b:'m0', modules:1},
-      {id:'l4', a:'c1', b:'m1', modules:1}, {id:'l5', a:'r0', b:'io0', modules:1},
+      {id:'l4', a:'c1', b:'m1', modules:1},
     ],
     flows: [
       {src:'c0', dst:'m0', gbs:24}, {src:'c1', dst:'m1', gbs:24},
@@ -1096,7 +1094,7 @@ function logicResults(c){
 }
 function tabLogic(){
   const [c, withLogic] = logicChip();
-  if (!c) return `<p class="hint">No chiplet has its own logic yet. Select a chiplet and press “Add chiplet logic” in the inspector, or add a Radio chiplet from the palette: it comes with a 60 GHz link model.</p>`;
+  if (!c) return `<p class="hint">No chiplet has its own logic yet. Select a chiplet and press “Add chiplet logic” in the inspector to start from a two-register map.</p>`;
   const rm = c.logic.regmap;
   const acc = ['rw', 'ro', 'wo', 'w1c', 'fifo_w', 'fifo_r'];
   return `<div class="sweepctl"><label class="hint" for="lgChip">Chiplet</label>

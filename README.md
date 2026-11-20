@@ -139,15 +139,13 @@ The composer drives `smu-vp`, the SMC + SEP virtual platform in tt-oca-harness-m
 
 ### Chiplet logic
 
-A chiplet is more than its Harness. To model what it does, select it and press **Add chiplet logic** in the inspector, or add the **Radio chiplet (60 GHz)** from the palette, which comes with a complete example. The **Chiplet logic** tab then holds three things:
+A chiplet is more than its Harness. To model what it does, select it and press **Add chiplet logic** in the inspector; it starts from a two-register map. The **Chiplet logic** tab then holds three things:
 
 | Part | What you write | What the composer does with it |
 |---|---|---|
 | Register map | Registers with an offset, an access type (`rw`, `ro`, `wo`, `w1c`, `fifo_w`, `fifo_r`), a reset value and named fields, plus model parameters | Gives every register its default behaviour, generates the C header firmware uses and a Python skeleton, and checks names, offsets and fields |
 | Python model | A `Model(RegisterModel)` class that overrides `update()`, `on_write()` or `on_read()` | Runs it behind the chiplet's logic window (`0x7000_0000` on its own die) through `mdie-vp`'s `py_bridge`; every access carries the simulation time |
 | Register script | One step per line: `write REG VALUE\|FIELD`, `read REG`, `poll REG.FIELD`, `expect REG[.FIELD] VALUE`, `wait NS` | Compiles it into a table that `firmware/oca-regscript` runs on the chiplet's SMC |
-
-The radio example models a 60 GHz chiplet-to-chiplet link. Pressing START sends the words in its TX FIFO; the transfer completes after its air time. RSSI, SNR and BER come from free-space path loss over `distance_mm`. With the example script, firmware on the radio's SMC reads back RSSI −66.6 dBm, SNR 6.4 dB and a BER of 1500 ppm.
 
 The window has no interrupt line yet, so scripts poll.
 
@@ -211,7 +209,6 @@ firmware/oca-d2d-pingpong/    two-die link firmware; reads the generated oca_con
 firmware/oca-latency-probe/   single-die fallback probe
 firmware/oca-regscript/       runs a generated register script against the chiplet logic
 usermodel/runtime.py          Python runtime behind the chiplet logic window
-usermodel/examples/           the 60 GHz radio: register map, model and script
 frontend/index.html      the whole web UI
 upstream-pr/             the smu-vp INI fix as sent upstream (#284)
 oca-env.example.sh       toolchain paths template for the Harness VP
