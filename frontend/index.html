@@ -296,8 +296,9 @@ async function boot(){
   pt.innerHTML = Object.entries(CAT.packages).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
   $('#tpls').innerHTML = CAT.chiplets.map((t, i) => `
     <button type="button" class="tpl" draggable="true" data-i="${i}" aria-label="Add ${esc(t.label)}, ${t.w_mm} by ${t.h_mm} mm">
-      <svg width="42" height="42" viewBox="0 0 42 42" aria-hidden="true"><rect x="${21 - t.w_mm * 2}" y="${21 - t.h_mm * 2}" width="${t.w_mm * 4}" height="${t.h_mm * 4}" rx="1" fill="var(--si)" stroke="var(--si-edge)"/>
-        <rect x="${21 - t.w_mm * 2}" y="${21 - t.h_mm * 2}" width="${t.w_mm * 4}" height="3" fill="${t.color}"/></svg>
+      <svg width="42" height="42" viewBox="0 0 42 42" aria-hidden="true"><rect x="${20 - t.w_mm * 2}" y="${20 - t.h_mm * 2}" width="${t.w_mm * 4 + 2}" height="${t.h_mm * 4 + 2}" rx="1.5" fill="#cbb994"/>
+        <rect x="${21 - t.w_mm * 2}" y="${21 - t.h_mm * 2}" width="${t.w_mm * 4}" height="${t.h_mm * 4}" rx="0.5" fill="${t.kind === 'memory' ? '#3a414a' : '#262b33'}" stroke="#0b0e12"/>
+        <circle cx="${23 - t.w_mm * 2}" cy="${23 - t.h_mm * 2}" r="1.3" fill="${t.color}"/></svg>
       <span><b>${esc(t.label)}</b><small>${t.w_mm}${NBSP}×${NBSP}${t.h_mm}${NBSP}mm, ${t.ucie_ports} UCIe module${t.ucie_ports > 1 ? 's' : ''}, ${t.power_w}${NBSP}W</small></span>
     </button>`).join('');
   document.querySelectorAll('.tpl').forEach(el => {
@@ -308,6 +309,7 @@ async function boot(){
   $('#vpStatus').innerHTML = `<dl class="props">
     <dt>Model repo</dt><dd class="${vs.model_found ? 'ok' : 'sev-error'}">${vs.model_found ? 'Found' : '⚠ Missing'}</dd>
     <dt>smu-vp</dt><dd class="${vs.smu_vp_found ? 'ok' : 'sev-warning'}">${vs.smu_vp_found ? 'Ready' : '⚠ Not built'}</dd>
+    <dt>mdie-vp</dt><dd class="${vs.mdie_vp_found ? 'ok' : 'hint'}">${vs.mdie_vp_found ? 'Ready (two dies)' : 'Not built'}</dd>
     <dt>Scenarios</dt><dd>${vs.scenarios.length}</dd></dl>
     <span class="mono" translate="no" style="font-size:10.5px;word-break:break-all">${esc(vs.smu_vp)}</span>`;
   let saved = null;
@@ -421,24 +423,86 @@ function renderCanvas(){
   const P = D.package;
   const pkg = CAT.packages[P.tech];
   const pitch = pkg.bump_pitch_um / 1000, dotsOK = pitch * s >= 3.2;
+  const tech = P.tech, interposer = tech === 'ucie-a-interposer', bridge = tech === 'ucie-a-bridge';
+  const physOK = EVAL?.phys && EVAL.forJSON === (CUR || JSON.stringify(D));
+  const phyOf = (lid, end) => physOK ? EVAL.phys.find(p => p.link === lid && p.end === end) : null;
   let h = `<defs>
-    <linearGradient id="siSheen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--si-hi)"/><stop offset=".55" stop-color="var(--si)"/><stop offset="1" stop-color="var(--si)"/></linearGradient>
+    <linearGradient id="laminate" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2a6347"/><stop offset="1" stop-color="#1e4b36"/></linearGradient>
+    <linearGradient id="siBack" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3a414b"/><stop offset=".42" stop-color="#222830"/><stop offset=".5" stop-color="#2f3640"/><stop offset=".58" stop-color="#1f242b"/><stop offset="1" stop-color="#181c22"/></linearGradient>
+    <linearGradient id="siHbm" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4a525c"/><stop offset="1" stop-color="#2a3037"/></linearGradient>
+    <linearGradient id="interposer" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#b9c1ca"/><stop offset=".5" stop-color="#9aa4ae"/><stop offset="1" stop-color="#aab3bc"/></linearGradient>
+    <pattern id="ipGrid" patternUnits="userSpaceOnUse" width="0.5" height="0.5"><path d="M0.5 0H0V0.5" fill="none" stroke="#7d8792" stroke-width="0.02" stroke-opacity=".6"/></pattern>
     <pattern id="bumps" patternUnits="userSpaceOnUse" width="${pitch}" height="${pitch}"><circle cx="${pitch/2}" cy="${pitch/2}" r="${pitch*0.32}" fill="var(--gold)"/></pattern>
   </defs><g transform="translate(${tx},${ty}) scale(${s})">`;
-  // substrate (solder mask) with a 1 mm / 5 mm grid
-  h += `<rect x="0" y="0" width="${P.w_mm}" height="${P.h_mm}" fill="var(--mask)" rx="0.4"/>`;
-  for (let x = 1; x < P.w_mm; x++) h += `<line x1="${x}" y1="0" x2="${x}" y2="${P.h_mm}" stroke="var(--mask-line)" stroke-opacity="${x%5?0.35:0.8}" stroke-width="${1/s}"/>`;
-  for (let y = 1; y < P.h_mm; y++) h += `<line x1="0" y1="${y}" x2="${P.w_mm}" y2="${y}" stroke="var(--mask-line)" stroke-opacity="${y%5?0.35:0.8}" stroke-width="${1/s}"/>`;
-  // dimension lines, as on an assembly drawing
+  // ---- organic build-up substrate: solder mask, edge, pin 1, fiducials, 5 mm alignment marks
+  h += `<rect x="0" y="0" width="${P.w_mm}" height="${P.h_mm}" rx="0.5" fill="url(#laminate)" stroke="#123526" stroke-width="${1.5/s}"/>
+    <rect x="0.35" y="0.35" width="${Math.max(0, P.w_mm - 0.7)}" height="${Math.max(0, P.h_mm - 0.7)}" rx="0.3" fill="none" stroke="#3b7a5c" stroke-width="${1/s}" stroke-opacity=".7"/>
+    <path d="M0.6 0.6 h1.6 L0.6 2.2 Z" fill="#d9b25a" fill-opacity=".9"><title>Pin 1</title></path>`;
+  for (const [fx, fy] of [[P.w_mm - 1.2, 1.2], [1.2, P.h_mm - 1.2], [P.w_mm - 1.2, P.h_mm - 1.2]])
+    h += `<circle cx="${fx}" cy="${fy}" r="0.55" fill="#173f2d"/><circle cx="${fx}" cy="${fy}" r="0.3" fill="#d9b25a"/>`;
+  for (let x = 5; x < P.w_mm; x += 5) for (let y = 5; y < P.h_mm; y += 5)
+    h += `<path d="M${x - 0.25} ${y}h0.5M${x} ${y - 0.25}v0.5" stroke="#9cc7b3" stroke-opacity=".35" stroke-width="${1/s}"/>`;
+  // ---- 2.5D: silicon interposer under every die
+  let ipBox = null;
+  if (interposer && D.chiplets.length){
+    const m = 0.6;
+    const x0 = Math.max(0.4, Math.min(...D.chiplets.map(c => c.x_mm)) - m), y0 = Math.max(0.4, Math.min(...D.chiplets.map(c => c.y_mm)) - m);
+    const x1 = Math.min(P.w_mm - 0.4, Math.max(...D.chiplets.map(c => c.x_mm + c.w_mm)) + m), y1 = Math.min(P.h_mm - 0.4, Math.max(...D.chiplets.map(c => c.y_mm + c.h_mm)) + m);
+    ipBox = [x0, y0, x1, y1];
+    h += `<rect x="${x0 - 0.25}" y="${y0 - 0.25}" width="${x1 - x0 + 0.5}" height="${y1 - y0 + 0.5}" rx="0.35" fill="#cdbd98" fill-opacity=".8"/>
+      <rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" rx="0.1" fill="url(#interposer)" stroke="#5d6670" stroke-width="${1/s}"><title>Silicon interposer</title></rect>
+      <rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" fill="url(#ipGrid)" style="pointer-events:none"/>`;
+  }
+  // ---- decoupling capacitors (0402 MLCCs) on the free substrate: perimeter rows and rings around dies
+  {
+    const occupied = D.chiplets.map(c => [c.x_mm - 0.7, c.y_mm - 0.7, c.x_mm + c.w_mm + 0.7, c.y_mm + c.h_mm + 0.7]);
+    if (ipBox) occupied.push([ipBox[0] - 0.8, ipBox[1] - 0.8, ipBox[2] + 0.8, ipBox[3] + 0.8]);
+    const phyEdges = new Set(physOK ? EVAL.phys.map(p => p.chip + p.edge) : []);
+    const caps = [];
+    const hit = (r, list) => list.some(o => r[0] < o[2] && o[0] < r[2] && r[1] < o[3] && o[1] < r[3]);
+    const tryCap = (cx, cy, horiz) => {
+      if (caps.length > 360) return;
+      const w = horiz ? 1.0 : 0.5, hh = horiz ? 0.5 : 1.0, r = [cx - w/2, cy - hh/2, cx + w/2, cy + hh/2];
+      if (r[0] < 0.5 || r[1] < 0.5 || r[2] > P.w_mm - 0.5 || r[3] > P.h_mm - 0.5) return;
+      if (hit(r, occupied) || hit(r, caps.map(c => [c[0] - 0.25, c[1] - 0.25, c[2] + 0.25, c[3] + 0.25]))) return;
+      caps.push(r);
+    };
+    const ring = (b, off, edgeOk) => {
+      const [x0, y0, x1, y1] = b;
+      for (let x = x0 + 0.6; x <= x1 - 0.6; x += 1.5){ if (edgeOk('N')) tryCap(x, y0 - off, true); if (edgeOk('S')) tryCap(x, y1 + off, true); }
+      for (let y = y0 + 0.6; y <= y1 - 0.6; y += 1.5){ if (edgeOk('W')) tryCap(x0 - off, y, false); if (edgeOk('E')) tryCap(x1 + off, y, false); }
+    };
+    // caps sit 1.0 mm out (ring) or 1.1 mm (interposer), just past the 0.7 / 0.8 mm keep-outs
+    if (ipBox) ring(ipBox, 1.1, () => true);
+    else for (const c of D.chiplets) ring([c.x_mm, c.y_mm, c.x_mm + c.w_mm, c.y_mm + c.h_mm], 1.0, e => !phyEdges.has(c.id + e));
+    for (let x = 2; x < P.w_mm - 1.5; x += 1.6){ tryCap(x, 1.6, true); tryCap(x, P.h_mm - 1.6, true); }
+    for (let y = 3; y < P.h_mm - 2.5; y += 1.6){ tryCap(1.6, y, false); tryCap(P.w_mm - 1.6, y, false); }
+    for (const [x0, y0, x1, y1] of caps){
+      const horiz = x1 - x0 > y1 - y0, t = horiz ? (x1 - x0) * 0.22 : (y1 - y0) * 0.22;
+      h += `<g style="pointer-events:none"><rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" rx="0.04" fill="#b99a6c"/>
+        ${horiz ? `<rect x="${x0}" y="${y0}" width="${t}" height="${y1 - y0}" fill="#d7dbe0"/><rect x="${x1 - t}" y="${y0}" width="${t}" height="${y1 - y0}" fill="#d7dbe0"/>`
+                : `<rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${t}" fill="#d7dbe0"/><rect x="${x0}" y="${y1 - t}" width="${x1 - x0}" height="${t}" fill="#d7dbe0"/>`}</g>`;
+    }
+  }
+  // ---- dimension lines, as on an assembly drawing
   const dy = -14/s, dx = -14/s, tk = 4/s, f = 11/s, sw = 1/s;
   h += `<g stroke="var(--ink-2)" stroke-width="${sw}" fill="none">
       <line x1="0" y1="${dy}" x2="${P.w_mm}" y2="${dy}"/><line x1="0" y1="${dy - tk}" x2="0" y2="${-2/s}"/><line x1="${P.w_mm}" y1="${dy - tk}" x2="${P.w_mm}" y2="${-2/s}"/>
       <line x1="${dx}" y1="0" x2="${dx}" y2="${P.h_mm}"/><line x1="${dx - tk}" y1="0" x2="${-2/s}" y2="0"/><line x1="${dx - tk}" y1="${P.h_mm}" x2="${-2/s}" y2="${P.h_mm}"/></g>
     <text x="${P.w_mm/2}" y="${dy - 3/s}" font-size="${f}" text-anchor="middle" fill="var(--ink-2)" style="font-variant-numeric:tabular-nums">${P.w_mm} mm</text>
     <text transform="translate(${dx - 4/s},${P.h_mm/2}) rotate(-90)" font-size="${f}" text-anchor="middle" fill="var(--ink-2)">${P.h_mm} mm</text>`;
-  // links: Manhattan route between PHY pad-edge midpoints (what the model measures)
-  const physOK = EVAL?.phys && EVAL.forJSON === (CUR || JSON.stringify(D));
-  const phyOf = (lid, end) => physOK ? EVAL.phys.find(p => p.link === lid && p.end === end) : null;
+  // ---- embedded bridges (EMIB-like): a small silicon die under each link, spanning the gap between the PHYs
+  let bridges = '';
+  if (bridge) for (const l of D.links){
+    const pa = phyOf(l.id, 'a'), pb = phyOf(l.id, 'b'); if (!pa || !pb) continue;
+    const ew = 'EW'.includes(pa.edge), ov = 0.8;
+    let x0, y0, x1, y1;
+    if (ew){ x0 = Math.min(pa.cx, pb.cx) - ov; x1 = Math.max(pa.cx, pb.cx) + ov; const c = (pa.y + pa.h/2 + pb.y + pb.h/2) / 2, half = Math.max(pa.h, pb.h) / 2 + 0.25; y0 = c - half; y1 = c + half; }
+    else { y0 = Math.min(pa.cy, pb.cy) - ov; y1 = Math.max(pa.cy, pb.cy) + ov; const c = (pa.x + pa.w/2 + pb.x + pb.w/2) / 2, half = Math.max(pa.w, pb.w) / 2 + 0.25; x0 = c - half; x1 = c + half; }
+    bridges += `<rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" rx="0.06" fill="url(#interposer)" fill-opacity=".55" stroke="#dfe5ea" stroke-width="${1.2/s}" stroke-dasharray="${4/s} ${2/s}" style="pointer-events:none"><title>Embedded silicon bridge (under the dies)</title></rect>`;
+  }
+  // ---- links: drawn as an X-ray view of the routing under the dies
   let labels = '';
   for (const l of D.links){
     const a = chip(l.a), b = chip(l.b); if (!a || !b) continue;
@@ -456,36 +520,41 @@ function renderCanvas(){
     const mid = pts.length === 2 ? [(pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2]
                                  : [(pts[1][0] + pts[pts.length - 2][0]) / 2, (pts[1][1] + pts[pts.length - 2][1]) / 2];
     const sel = SEL?.type === 'link' && SEL.id === l.id;
-    const col = e && !e.reach_ok ? 'var(--err)' : e?.utilization >= 1 ? 'var(--err)' : e?.utilization >= 0.7 ? 'var(--warn)' : 'var(--cu)';
+    const status = e && !e.reach_ok ? 'var(--err)' : e?.utilization >= 1 ? 'var(--err)' : e?.utilization >= 0.7 ? 'var(--warn)' : null;
     const w = (2 + 1.5 * (l.modules - 1)) / s;
-    const tipTxt = e ? `${chip(l.a).name} ⟷ ${chip(l.b).name}: ${e.latency_ns} ns analytic, ${e.channel_mm} mm channel, ${e.bw_gbs_per_dir} GB/s/dir, ${Math.round(e.utilization*100)}% util` + (vpLink(l.id) ? `; VP firmware-visible ${vpLink(l.id).ns_per_access} ns/access` : '') : '';
+    const tipTxt = e ? `${chip(l.a).name} ⟷ ${chip(l.b).name}: ${e.latency_ns} ns analytic, ${e.channel_mm} mm channel, ${e.bw_gbs_per_dir} GB/s/dir, ${Math.round(e.utilization*100)}% util` + (vpLink(l.id) ? `; VP one way ${vpLink(l.id).ns_per_access} ns` : '') : '';
     h += `<g class="lnk" data-id="${l.id}" style="cursor:pointer"><title>${esc(tipTxt)}</title>
       <path d="${d}" fill="none" stroke="transparent" stroke-width="${12/s}"/>
       ${sel ? `<path d="${d}" fill="none" stroke="var(--sel)" stroke-width="${w + 4/s}" stroke-linejoin="round" stroke-linecap="round"/>` : ''}
-      <path d="${d}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round" ${e && !e.reach_ok ? `stroke-dasharray="${4/s} ${3/s}"` : ''}/>
+      <path d="${d}" fill="none" stroke="${status || 'var(--cu)'}" stroke-opacity="${status ? 1 : 0.8}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round" ${e && !e.reach_ok ? `stroke-dasharray="${4/s} ${3/s}"` : ''}/>
     </g>`;
-    if (e) labels += `<text x="${mid[0]}" y="${mid[1] - 4/s}" font-size="${10.5/s}" text-anchor="middle" fill="var(--mask-ink)" paint-order="stroke" stroke="var(--mask)" stroke-width="${3.5/s}" style="pointer-events:none;font-variant-numeric:tabular-nums">${e.latency_ns.toFixed(1)} ns, ${Math.round(e.utilization*100)}%${vpLink(l.id) ? ', VP' : ''}</text>`;
+    if (e) labels += `<text x="${mid[0]}" y="${mid[1] - 4/s}" font-size="${10.5/s}" text-anchor="middle" fill="#e9f2ee" paint-order="stroke" stroke="#163a2a" stroke-width="${3.5/s}" style="pointer-events:none;font-variant-numeric:tabular-nums">${e.latency_ns.toFixed(1)} ns, ${Math.round(e.utilization*100)}%${vpLink(l.id) ? ', VP' : ''}</text>`;
   }
-  // chiplets
+  // ---- dies: bare silicon backside on an underfill fillet, laser-marked, with a pin-1 dot in the kind colour
   for (const c of D.chiplets){
     const t = tplOf(c.kind);
     const sel = SEL?.type === 'chiplet' && SEL.id === c.id;
     const bad = issuesFor(c.id).some(i => i.severity === 'error');
     const from = LINKFROM === c.id;
-    const nm = 12/s, sm = 10/s;
+    const hbm = c.kind === 'memory';
+    const nm = 12/s, sm = 10/s, fil = 0.22;
     h += `<g class="chip" data-id="${c.id}" style="cursor:${LINKMODE ? 'crosshair' : 'move'}">
-      <rect x="${c.x_mm}" y="${c.y_mm}" width="${c.w_mm}" height="${c.h_mm}" rx="0.12" fill="url(#siSheen)"
-        stroke="${sel || from ? 'var(--sel)' : bad ? 'var(--err)' : 'var(--si-edge)'}" stroke-width="${(sel || from || bad ? 3 : 1)/s}"/>
-      <rect x="${c.x_mm}" y="${c.y_mm}" width="${c.w_mm}" height="${Math.min(0.35, c.h_mm / 8)}" fill="${t.color}" style="pointer-events:none"/>
-      <text x="${c.x_mm + c.w_mm/2}" y="${c.y_mm + c.h_mm/2}" font-size="${nm}" fill="var(--si-ink)" text-anchor="middle" font-weight="650">${esc(fitText(c.name, c.w_mm - 0.4, nm))}</text>
-      ${c.h_mm * s >= 64 ? `<text x="${c.x_mm + c.w_mm/2}" y="${c.y_mm + c.h_mm/2 + 15/s}" font-size="${sm}" fill="var(--si-ink)" fill-opacity=".75" text-anchor="middle" style="font-variant-numeric:tabular-nums">${esc(fitText(`${c.w_mm} × ${c.h_mm} mm, ${c.power_w} W`, c.w_mm - 0.4, sm))}</text>` : ''}
+      <rect x="${c.x_mm - fil}" y="${c.y_mm - fil}" width="${c.w_mm + 2*fil}" height="${c.h_mm + 2*fil}" rx="${fil * 1.6}" fill="#cbb994" fill-opacity=".9"/>
+      <rect x="${c.x_mm}" y="${c.y_mm}" width="${c.w_mm}" height="${c.h_mm}" rx="0.06" fill="${hbm ? 'url(#siHbm)' : 'url(#siBack)'}"
+        stroke="${sel || from ? 'var(--sel)' : bad ? 'var(--err)' : '#0b0e12'}" stroke-width="${(sel || from || bad ? 3 : 1)/s}"/>
+      ${hbm ? [0.35, 0.7].map(i => `<rect x="${c.x_mm + i}" y="${c.y_mm + i}" width="${Math.max(0, c.w_mm - 2*i)}" height="${Math.max(0, c.h_mm - 2*i)}" rx="0.04" fill="none" stroke="#6b747e" stroke-opacity=".55" stroke-width="${1/s}" style="pointer-events:none"/>`).join('') : ''}
+      <circle cx="${c.x_mm + 0.45}" cy="${c.y_mm + 0.45}" r="${Math.min(0.24, c.w_mm / 12)}" fill="${t.color}" style="pointer-events:none"/>
+      <text x="${c.x_mm + c.w_mm/2}" y="${c.y_mm + c.h_mm/2}" font-size="${nm}" fill="#c3cad2" text-anchor="middle" font-weight="600" style="letter-spacing:.02em">${esc(fitText(c.name, c.w_mm - 0.4, nm))}</text>
+      ${c.h_mm * s >= 64 ? `<text x="${c.x_mm + c.w_mm/2}" y="${c.y_mm + c.h_mm/2 + 15/s}" font-size="${sm}" fill="#8f98a2" text-anchor="middle" style="font-variant-numeric:tabular-nums">${esc(fitText(`${t.label.split(' ')[0]}, ${c.w_mm} × ${c.h_mm} mm, ${c.power_w} W`, c.w_mm - 0.4, sm))}</text>` : ''}
       <title>${esc(c.name)}, ${esc(t.label)}, ${c.w_mm} × ${c.h_mm} mm</title>
-      <rect class="rz" data-id="${c.id}" x="${c.x_mm + c.w_mm - 8/s}" y="${c.y_mm + c.h_mm - 8/s}" width="${8/s}" height="${8/s}" fill="var(--si-ink)" fill-opacity=".5" style="cursor:nwse-resize"/>
+      <rect class="rz" data-id="${c.id}" x="${c.x_mm + c.w_mm - 8/s}" y="${c.y_mm + c.h_mm - 8/s}" width="${8/s}" height="${8/s}" fill="#c3cad2" fill-opacity=".35" style="cursor:nwse-resize"/>
     </g>`;
   }
+  h += bridges;   // buried bridges, X-ray view through the dies
+  // ---- UCIe PHY bump fields, X-ray view through the die
   if (physOK) for (const p of EVAL.phys){
     const sel = SEL?.type === 'link' && SEL.id === p.link;
-    h += `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" fill="${dotsOK ? 'url(#bumps)' : 'var(--gold)'}" fill-opacity="${dotsOK ? 1 : 0.85}" stroke="${sel ? 'var(--sel)' : 'var(--gold)'}" stroke-width="${(sel ? 2 : 0.6)/s}" style="pointer-events:none"><title>UCIe PHY on the ${({N:'north',S:'south',E:'east',W:'west'})[p.edge]} edge, ${'EW'.includes(p.edge) ? p.h : p.w} mm of shoreline, ${pkg.bump_pitch_um} µm bump pitch</title></rect>`;
+    h += `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" fill="${dotsOK ? 'url(#bumps)' : 'var(--gold)'}" fill-opacity="${dotsOK ? 0.9 : 0.45}" stroke="${sel ? 'var(--sel)' : 'var(--gold)'}" stroke-width="${(sel ? 2 : 0.8)/s}" stroke-dasharray="${sel ? 'none' : `${3/s} ${2/s}`}" style="pointer-events:none"><title>UCIe PHY on the ${({N:'north',S:'south',E:'east',W:'west'})[p.edge]} edge, ${'EW'.includes(p.edge) ? p.h : p.w} mm of shoreline, ${pkg.bump_pitch_um} µm bump pitch</title></rect>`;
   }
   h += labels + `</g>`;
   if (LINKMODE) h += `<text x="16" y="22" fill="var(--cobalt)" font-size="13" font-weight="600">Link tool: ${LINKFROM ? 'click the second chiplet' : 'click the first chiplet'}. Press Esc to stop.</text>`;
@@ -741,7 +810,7 @@ const name = id => esc(chip(id)?.name ?? id);
 function bar(v){ return `<span class="bar" aria-hidden="true"><i style="width:${Math.min(100, v*100)}%;background:${utilColor(v)}"></i></span>`; }
 function tabLinks(){
   if (!EVAL?.links.length) return '<span class="hint">No links yet. Press L and click two chiplets, or use Add link in a chiplet\'s inspector.</span>';
-  return `<table><thead><tr><th scope="col">Link</th><th scope="col">Gap</th><th scope="col">Channel</th><th scope="col">Lanes</th><th scope="col">BW/dir</th><th scope="col">Load</th><th scope="col">Util</th><th scope="col">Latency</th><th scope="col">Shoreline</th><th scope="col"><span class="mono" translate="no">bridge_delay_ns</span></th><th scope="col" title="Firmware-visible cost per 32-bit access measured on smu-vp">VP per access</th></tr></thead><tbody>
+  return `<table><thead><tr><th scope="col">Link</th><th scope="col">Gap</th><th scope="col">Channel</th><th scope="col">Lanes</th><th scope="col">BW/dir</th><th scope="col">Load</th><th scope="col">Util</th><th scope="col">Latency</th><th scope="col">Shoreline</th><th scope="col"><span class="mono" translate="no">bridge_delay_ns</span></th><th scope="col" title="One-way time measured by the Harness VP (two-die co-simulation when mdie-vp is built)">VP one way</th></tr></thead><tbody>
     ${EVAL.links.map(e => `<tr>
       <td><button type="button" class="rowbtn" data-sel="link:${e.id}">${name(e.a)} – ${name(e.b)}</button></td><td>${u(e.edge_gap_mm, 'mm')}</td><td class="${e.reach_ok?'':'sev-error'}">${e.reach_ok ? '' : '⚠ '}${u(e.channel_mm, 'mm')}</td>
       <td>${e.lanes}</td><td>${u(e.bw_gbs_per_dir, 'GB/s')}</td><td>${u(Math.max(e.load_gbs.fwd, e.load_gbs.rev), 'GB/s')}</td>
@@ -792,10 +861,12 @@ function tabRun(){
 function resCls(r){ return /^PASS/.test(r) ? 'ok' : /FAIL/.test(r) ? 'sev-error' : 'sev-warning'; }
 function tabVP(){
   const vp = RUN?.result?.harness_vp;
-  const pre = `<p class="hint">Per chiplet: its scenario runs on <span class="mono" translate="no">smu-vp</span> (SMC RV64 + SEP RV32 firmware) with
-    <span class="mono" translate="no">dut.aou.bridge_delay_ns</span> = the worst latency of its links. Per link: the GUI's latency probe times 32 AoU
-    accesses with CLINT MTIME. Today the far die is the AoU stub peer inside <span class="mono" translate="no">smc_platform</span>; true N-die co-simulation
-    needs a multi-die top in tt-oca-harness-model.</p>`;
+  const d2dMode = vp?.link_mode === 'd2d' || CAT.harness_vp.mdie_vp_found;
+  const pre = `<p class="hint">Each chiplet runs its scenario on <span class="mono" translate="no">smu-vp</span> (SMC RV64 and SEP RV32 firmware), with
+    <span class="mono" translate="no">dut.aou.bridge_delay_ns</span> set to the worst latency of its links.
+    ${d2dMode ? `Each link runs its two chiplets as two real dies on <span class="mono" translate="no">mdie-vp</span>, with their AoUs connected to each other,
+    and times SMC-to-SMC round trips over the link with CLINT MTIME.`
+      : `Each link runs a latency probe against the AoU stub peer. Build <span class="mono" translate="no">mdie-vp</span> to simulate both dies of a link together.`}</p>`;
   if (!vp) return pre + '<span class="hint">No Harness VP run yet — tick “Harness VP” and press ▶ Run.</span>';
   if (vp.skipped) return pre + '<span class="sev-warning">⚠ Skipped: fix the DRC errors in the Checks tab, then run again.</span>';
   const stale = vpFresh() || vp.available === false ? '' : '<p class="sev-warning">The design changed since this run; results below are for the earlier design.</p>';
@@ -805,14 +876,24 @@ function tabVP(){
       <td class="${resCls(j.result)}">${esc(j.result)}</td>
       <td class="hint">${j.ini_overridden ? 'test ships its own smc.ini (GUI delay not applied)' : j.uses_aou ? 'crosses AoU' : 'on-die only'}</td></tr>`).join('')}</table>`;
   const b = vp.baseline;
-  const links = (vp.links || []).length ? `<h3>Link latency probes</h3>
-    ${b ? `<p class="hint">On-die baseline (bridge_delay 0): <b>${b.ns_per_access} ns/access</b>. AoU part = measured − baseline;
-      “AoU crossings/access” = AoU part ÷ injected delay (the AoU model's annotated delay as seen by a 32-bit access).</p>` : ''}
-    <table><thead><tr><th scope="col">Link</th><th scope="col">Analytic latency</th><th scope="col">Injected</th><th scope="col">VP per access</th><th scope="col">AoU part</th><th scope="col">AoU crossings per access</th><th scope="col">Result</th></tr></thead>
+  const isD2D = vp.link_mode === 'd2d';
+  const links = !(vp.links || []).length ? '' : isD2D ? `<h3>Links: two-die co-simulation</h3>
+    ${b ? `<p class="hint">With no link delay, a round trip between the two SMCs takes ${u(b.rtt_ns, 'ns')} (on-die paths and polling).
+      “Link per crossing” is the one-way time minus that baseline, which is what the package adds each time a message crosses.</p>` : ''}
+    <table><thead><tr><th scope="col">Link</th><th scope="col">Die 0 · die 1</th><th scope="col">Analytic latency</th><th scope="col">Injected</th>
+      <th scope="col">Round trip</th><th scope="col">One way</th><th scope="col">Link per crossing</th><th scope="col">Result</th></tr></thead><tbody>
+    ${vp.links.map(j => { const p = j.probe || {}; const e = linkEval(j.link);
+      return `<tr><td>${esc(j.name)}</td><td>${esc((j.dies || []).join(', '))}</td><td>${e ? u(e.latency_ns, 'ns') : '—'}</td><td>${u(j.bridge_delay_ns, 'ns')}</td>
+        <td>${u(p.rtt_ns, 'ns')}</td><td><b>${u(p.ns_per_access, 'ns')}</b></td><td>${u(p.aou_ns_per_access, 'ns')}</td>
+        <td class="${resCls(j.result)}">${esc(j.result)}</td></tr>`; }).join('')}</tbody></table>`
+  : `<h3>Link latency probes</h3>
+    ${b ? `<p class="hint">On-die baseline (bridge delay 0): <b>${u(b.ns_per_access, 'ns')} per access</b>. AoU part = measured − baseline;
+      “AoU crossings per access” = AoU part ÷ injected delay.</p>` : ''}
+    <table><thead><tr><th scope="col">Link</th><th scope="col">Analytic latency</th><th scope="col">Injected</th><th scope="col">VP per access</th><th scope="col">AoU part</th><th scope="col">AoU crossings per access</th><th scope="col">Result</th></tr></thead><tbody>
     ${vp.links.map(j => { const p = j.probe || {}; const e = linkEval(j.link);
       return `<tr><td>${esc(j.name)}</td><td>${e ? u(e.latency_ns, 'ns') : '—'}</td><td>${u(j.bridge_delay_ns, 'ns')}</td>
         <td><b>${u(p.ns_per_access, 'ns')}</b></td><td>${u(p.aou_ns_per_access, 'ns')}</td><td>${num(p.aou_crossings_per_access)}</td>
-        <td class="${resCls(j.result)}">${esc(j.result)}</td></tr>`; }).join('')}</table>` : '';
+        <td class="${resCls(j.result)}">${esc(j.result)}</td></tr>`; }).join('')}</tbody></table>`;
   return pre + stale + (vp.available === false ? '<p class="sev-warning">⚠ smu-vp is not built on the server. Build it (see the Run log for the command), or set OCA_SMU_VP. The inis and run.sh files were still written.</p>' : '') + chips + links;
 }
 

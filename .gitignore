@@ -19,3 +19,6 @@ reply-to-*.md
 
 # Local toolchain paths (copy of oca-env.example.sh)
 oca-env.sh
+firmware/oca-d2d-pingpong/oca_d2d_smc0
+firmware/oca-d2d-pingpong/oca_d2d_smc1
+firmware/oca-d2d-pingpong/oca_d2d_sep

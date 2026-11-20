@@ -12,15 +12,16 @@ Lay out chiplets on a package in your browser, then check the result with two ki
 Choosing chiplet sizes, a package technology and die-to-die links is a physical decision, but its effects show up in system behaviour: link latency, bandwidth, power and cost, and what firmware actually sees. The composer keeps both in one loop:
 
 1. **Analytic model, on every edit.** Placement rules, UCIe reach, where each PHY sits on the die edge and how much shoreline it takes, link bandwidth and latency, traffic routing and load, die-to-die power, yield and cost.
-2. **Harness VP, on demand.** The same design runs on `smu-vp` from [tt-oca-harness-model](https://github.com/tenstorrent/tt-oca-harness-model). The link latency derived from the package is fed into the AoU (AXI-over-UCIe) model, and each chiplet runs SMC and SEP firmware.
+2. **Harness VP, on demand.** The same design runs on the virtual platform from [tt-oca-harness-model](https://github.com/tenstorrent/tt-oca-harness-model). Each chiplet runs SMC and SEP firmware. Each UCIe link runs its two chiplets as two real dies whose AXI-over-UCIe (AoU) bridges are connected to each other, with the latency derived from the package, and firmware on one die exchanges messages with the other.
 
 ## Features
 
-- Drag-and-drop editor with dies drawn to scale on the package substrate, UCIe PHYs placed on the facing die edges, and links routed between them
+- Drag-and-drop editor with dies drawn to scale on a package that looks like the real thing: an organic substrate with decoupling capacitors, a silicon interposer for 2.5D, or embedded bridges under each link
+- UCIe PHYs placed on the facing die edges, and links routed between them, shown as an X-ray view through the dies
 - Live design rule checks: substrate bounds, die spacing, UCIe reach, PHY shoreline per die edge, UCIe module count, and dies that don't face each other
 - Traffic flows routed on the lowest-latency path, with per-link utilisation and loaded latency
 - Sweeps over package technology, data rate, modules per link, layout spread or defect density
-- Harness VP runs: a firmware scenario per chiplet, and a latency probe per link that measures the AoU cost firmware sees
+- Harness VP runs: a firmware scenario per chiplet, and a two-die co-simulation per link that measures the round trip between the two chiplets' SMCs
 - Export of a bundle with the design, the analytic report, and a ready-to-run `smu-vp` ini and `run.sh` for every job
 - Undo and redo, full keyboard operation, and light and dark themes
 
@@ -60,6 +61,8 @@ The composer drives `smu-vp`, the SMC + SEP virtual platform in tt-oca-harness-m
    git submodule update --init --recursive
    ```
 
+   The two-die platform, `mdie-vp`, is on a follow-up branch, `feat/mdie-vp`, which is not published yet. Without it, the composer still works and runs each link as a single-die latency probe against the AoU stub peer.
+
 2. **Install the toolchain** that tt-oca-harness-model's CI uses:
 
    | Dependency | Version | Note |
@@ -85,17 +88,26 @@ The composer drives `smu-vp`, the SMC + SEP virtual platform in tt-oca-harness-m
    source oca-env.sh
    cd upstream/tt-oca-harness-model
    cmake -S vp -B vp/build_smc -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=20 -DSMC_CXX_STANDARD=20
-   cmake --build vp/build_smc --target smu-vp -j
+   cmake --build vp/build_smc --target smu-vp mdie-vp -j
    ```
 
-5. **Check it.** Restart `./start.sh`. The sidebar should show `smu-vp: Ready` and nine scenarios. As an extra check, `sw/smu-vp-tests/run_smu_vp_tests.sh` in the model repository should report all tests passing.
+5. **Check it.** Restart `./start.sh`. The sidebar should show `smu-vp: Ready`, `mdie-vp: Ready (two dies)` and nine scenarios. As an extra check, `sw/smu-vp-tests/run_smu_vp_tests.sh` in the model repository should report all tests passing.
 
 > [!TIP]
 > If the model lives elsewhere, set `OCA_MODEL_ROOT` and `OCA_SMU_VP` in `oca-env.sh`. `./start.sh` also reads the file named by `OCA_ENV`.
 
 ## Using the composer
 
-1. **Set up the package.** In the header, choose the package technology (UCIe-S organic, UCIe-A silicon interposer, or UCIe-A embedded bridge) and the substrate size in millimetres.
+1. **Set up the package.** In the header, choose the package technology and the substrate size in millimetres. The canvas draws each one the way it is built:
+
+   | Technology | Typical use | Drawn as |
+   |---|---|---|
+   | UCIe-S, organic | 2D multi-die packages, dies a few mm apart | dies on a build-up laminate substrate, ringed with decoupling capacitors |
+   | UCIe-A, silicon interposer | 2.5D, e.g. compute dies with HBM stacks | dies packed on a silicon interposer that sits on the substrate |
+   | UCIe-A, embedded bridge | 2.5D without a full interposer | a silicon bridge under each link, spanning the gap between the dies |
+
+   ![Two compute dies, two HBM stacks and an IO die on a silicon interposer](docs-interposer.png)
+
 2. **Place chiplets.** Drag a chiplet from the left palette onto the substrate, or press it to add one. Move a chiplet by dragging it or with the arrow keys, and resize it from its bottom-right corner. You can also type its position, size, power and number of UCIe modules in the inspector on the right.
 3. **Connect them.** Press **Link tool** (or <kbd>L</kbd>) and click two chiplets, or use **Add link** in a chiplet's inspector. Each link gets a PHY on the facing edge of both dies. Select a link to set its UCIe modules, data rate and fixed latencies.
 4. **Add traffic.** In the **Traffic** tab, add flows between chiplets with a bandwidth in GB/s. Each flow is routed on the lowest-latency path.
@@ -111,7 +123,7 @@ The composer drives `smu-vp`, the SMC + SEP virtual platform in tt-oca-harness-m
    | Run | The server log of the last run |
    | Harness VP | Per-chiplet scenario results and per-link latency probes |
 
-6. **Run the Harness VP.** Tick **Harness VP** and press **Run**. Each chiplet runs its scenario, chosen in its inspector, and each link runs the latency probe. Results come back in about 20 seconds for the example design. They are marked out of date when you change the design afterwards.
+6. **Run the Harness VP.** Tick **Harness VP** and press **Run**. Each chiplet runs its scenario, chosen in its inspector. Each link runs its two chiplets together on `mdie-vp`: die 1 comes up and reports to die 0, die 0 checks a remote write and read-back, and the two SMCs exchange 16 ping-pongs over the link. Results come back in about a minute for the example design. They are marked out of date when you change the design afterwards.
 7. **Save or export.** Under **File**, save or import the design as JSON, or export a simulation bundle with an ini and `run.sh` for every job so you can rerun them by hand.
 
 ### Keyboard
@@ -138,13 +150,17 @@ FastAPI server: backend/app.py
   └─ engines/harness_vp.py   runs smu-vp from tt-oca-harness-model
         ├─ per chiplet: its sw/smu-vp-tests scenario, with dut.aou.bridge_delay_ns
         │               set to the worst latency of its links
-        ├─ per link:    firmware/oca-latency-probe times 32 AoU accesses with CLINT MTIME
-        └─ once:        the same probe at 0 ns, giving the on-die share of the cost
+        ├─ per link:    mdie-vp runs the link's two chiplets as two dies with their AoUs
+        │               connected; firmware/oca-d2d-pingpong times SMC-to-SMC round trips
+        │               (without mdie-vp: firmware/oca-latency-probe against the AoU stub)
+        └─ once:        the same run at 0 ns, giving the on-die share of the cost
 ```
 
 The link latency injected into the VP is the AoU fixed latency plus the PHY latency plus the flight time over the routed channel (PHY to PHY, plus escape routing).
 
-On smu-vp, firmware sees about **1.25 ns + 1.5 × `bridge_delay_ns` per 32-bit access**. This relation holds from 8 ns to 1 µs. The composer reports it as a measurement and doesn't model its cause.
+On `mdie-vp`, a round trip between the two SMCs takes about **66 ns + 2 × `bridge_delay_ns`**: one crossing each way, plus on-die paths and polling. Link runs use a 5 ns simulation quantum so that the link latency is visible. Even so, delays of a few ns read low (an 8 ns delay adds about 11 ns per round trip instead of 16).
+
+Each die programs its SMC global window (`0x4000_0000 + die × 64 MiB`) and opens an entry in its SMC inbound filter for the peer, as boot firmware would on silicon.
 
 ### Project structure
 
@@ -154,7 +170,8 @@ backend/
   catalog.py             chiplet templates, package technologies, defaults
   engines/analytic.py    analytic model
   engines/harness_vp.py  Harness VP runner
-firmware/oca-latency-probe/   SMC + SEP firmware for the per-link probe
+firmware/oca-d2d-pingpong/    SMC (one image per die) + SEP firmware for the two-die link run
+firmware/oca-latency-probe/   single-die fallback probe
 frontend/index.html      the whole web UI
 upstream-pr/             the smu-vp INI fix as sent upstream (#284)
 oca-env.example.sh       toolchain paths template for the Harness VP
@@ -166,7 +183,7 @@ Run outputs go to `runs/`, which git ignores.
 ## Limitations
 
 > [!IMPORTANT]
-> The VP doesn't yet simulate several chiplets together. Each chiplet runs in its own `smu-vp` process, and the far die is the AoU stub inside `smc_platform`. A true multi-chiplet run needs a SystemC top that connects real peers through `aou_core::connect_peer()`.
+> `mdie-vp` connects one pair of dies, because each die in the model has a single AoU. Each link is simulated as its own pair; a whole package with several links per die isn't simulated in one run yet. The per-chiplet scenarios still run against the AoU stub peer.
 
 - The AoU model is loosely timed. `bridge_delay_ns` is its only timing parameter; there is no flit, credit or QoS timing.
 - Of the upstream scenarios, only `smu-aou-ext-test` sends traffic over the AoU. The others run on one die, so the injected delay doesn't affect them. The inspector says which kind each scenario is.
