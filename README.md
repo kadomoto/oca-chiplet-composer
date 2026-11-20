@@ -2,7 +2,7 @@
 
 Lay out chiplets on a package in your browser, then check the result with two kinds of models: a fast analytic model that answers as you edit, and the [Open Chiplet Atlas Harness](https://github.com/tenstorrent/tt-oca-harness) virtual platform running real firmware.
 
-![The composer with five chiplets on a UCIe-S organic package, the design summary above the canvas, and Harness VP results below](docs-screenshot.png)
+![Demo: dragging a die updates the checks; switching to a silicon interposer shows UCIe-A reach errors; a new die is added and linked; a Harness VP run simulates each link as two real dies; a sweep compares package technologies](docs/demo.gif)
 
 > [!NOTE]
 > This is an independent research prototype built on Tenstorrent's open-source OCA Harness repositories. It is not an official Tenstorrent project. The physical numbers it uses (reach, bump pitch, energy, cost) are illustrative defaults, not vendor data.
@@ -24,6 +24,8 @@ Choosing chiplet sizes, a package technology and die-to-die links is a physical 
 - Harness VP runs: a firmware scenario per chiplet, and a two-die co-simulation per link that measures the round trip between the two chiplets' SMCs
 - Export of a bundle with the design, the analytic report, and a ready-to-run `smu-vp` ini and `run.sh` for every job
 - Undo and redo, full keyboard operation, and light and dark themes
+
+Design decisions for the UI are recorded in [`.impeccable.md`](.impeccable.md).
 
 ## Getting started
 
@@ -101,6 +103,8 @@ The composer drives `smu-vp`, the SMC + SEP virtual platform in tt-oca-harness-m
 
 ## Using the composer
 
+![The composer with five chiplets on a UCIe-S organic package, the design summary above the canvas, and Harness VP results below](docs-screenshot.png)
+
 1. **Set up the package.** In the header, choose the package technology and the substrate size in millimetres. The canvas draws each one the way it is built:
 
    | Technology | Typical use | Drawn as |
@@ -126,7 +130,7 @@ The composer drives `smu-vp`, the SMC + SEP virtual platform in tt-oca-harness-m
    | Run | The server log of the last run |
    | Harness VP | Per-chiplet scenario results and per-link latency probes |
 
-6. **Run the Harness VP.** Tick **Harness VP** and press **Run**. Each chiplet runs its scenario, chosen in its inspector. Each link runs its two chiplets together on `mdie-vp`: die 1 comes up and reports to die 0, die 0 checks a remote write and read-back, and the two SMCs exchange 16 ping-pongs over the link. Results come back in about a minute for the example design. They are marked out of date when you change the design afterwards.
+6. **Run the Harness VP.** Tick **Harness VP** and press **Run simulation**. Each chiplet runs its scenario, chosen in its inspector. Each link runs its two chiplets together on `mdie-vp`: die 1 comes up and reports to die 0, die 0 checks a remote write and read-back, and the two SMCs exchange 16 ping-pongs over the link. Results come back in about a minute for the example design. They are marked out of date when you change the design afterwards.
 7. **Save or export.** Under **File**, save or import the design as JSON, or export a simulation bundle with an ini and `run.sh` for every job so you can rerun them by hand.
 
 ### Keyboard
