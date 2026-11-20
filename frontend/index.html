@@ -1,0 +1,975 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1b1e23" media="(prefers-color-scheme: dark)">
+<title>OCA Chiplet Composer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Palette: vellum (drafting film), ink (drafting ink), mask (solder mask), silicon, gold (ENIG bumps), cobalt (interaction).
+   Status colours are reserved for DRC / utilisation and always ship with text. */
+:root{
+  --vellum:#eef1f3;--panel:#f8f9fa;--ink:#1d2733;--ink-2:#55606d;--rule:#cfd5db;--rule-2:#e2e6ea;
+  --mask:#2e5e50;--mask-line:#4f7d6f;--mask-ink:#d9e8e2;
+  --si:#5b6773;--si-hi:#76828e;--si-edge:#2c343d;--si-ink:#f2f4f6;
+  --gold:#d2a03c;--cu:#c8873f;
+  --cobalt:#2f5fd0;--on-cobalt:#ffffff;
+  --ok:#2f8a5b;--warn:#a96d12;--err:#c7372f;--sel:#f0c24b;
+  --sans:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  color-scheme:light dark;
+  /* aliases kept for the script */
+  --bg:var(--vellum);--line:var(--rule);--muted:var(--ink-2);--accent:var(--cobalt);--on-accent:var(--on-cobalt);--sub:var(--mask);--subline:var(--mask-line);
+}
+:root[data-theme="light"]{color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --vellum:#1b2129;--panel:#212831;--ink:#e4e8ec;--ink-2:#9aa5b1;--rule:#36404b;--rule-2:#2b333d;
+  --mask:#1f4639;--mask-line:#2f5f50;--mask-ink:#bcd6cc;
+  --si:#6c7884;--si-hi:#8793a0;--si-edge:#11161c;--si-ink:#f5f7f9;
+  --gold:#e0b453;--cu:#d99a55;--cobalt:#86a8ff;--on-cobalt:#0d1730;
+  --ok:#5cc28f;--warn:#e2a948;--err:#ff7a70;--sel:#f5cf60;}}
+:root[data-theme="dark"]{color-scheme:dark;
+  --vellum:#1b2129;--panel:#212831;--ink:#e4e8ec;--ink-2:#9aa5b1;--rule:#36404b;--rule-2:#2b333d;
+  --mask:#1f4639;--mask-line:#2f5f50;--mask-ink:#bcd6cc;
+  --si:#6c7884;--si-hi:#8793a0;--si-edge:#11161c;--si-ink:#f5f7f9;
+  --gold:#e0b453;--cu:#d99a55;--cobalt:#86a8ff;--on-cobalt:#0d1730;
+  --ok:#5cc28f;--warn:#e2a948;--err:#ff7a70;--sel:#f5cf60;}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--vellum);color:var(--ink);font:14px/1.45 var(--sans);font-variation-settings:"wdth" 100}
+body{display:flex;flex-direction:column;height:100dvh}
+@media (pointer:fine){html{overscroll-behavior:none}}
+button,select,input,summary{font:inherit;color:inherit}
+button,.tpl,select,label,summary{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+:focus-visible{outline:2px solid var(--cobalt);outline-offset:2px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.skip{position:absolute;left:8px;top:-40px;z-index:10;background:var(--cobalt);color:var(--on-cobalt);padding:6px 10px;border-radius:4px;text-decoration:none}
+.skip:focus{top:8px}
+h1,h2,h3{text-wrap:balance}
+.cond{font-variation-settings:"wdth" 80}
+.mono{font-family:var(--mono);font-size:.92em}
+
+/* ---------- header */
+header{display:flex;gap:10px;align-items:center;padding:8px 16px;border-bottom:1px solid var(--rule);background:var(--panel);flex-wrap:wrap;flex:none}
+header h1{font-size:16px;margin:0 6px 0 0;font-weight:700;letter-spacing:-.01em}
+header h1 span{color:var(--ink-2);font-weight:400}
+header .grp{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+header .sep{width:1px;height:22px;background:var(--rule)}
+@media (max-width:1650px){header h1 span{display:none}}
+.grow{flex:1}
+.btn{border:1px solid var(--rule);background:var(--panel);border-radius:4px;padding:5px 10px;cursor:pointer;line-height:1.2}
+.btn:hover:not(:disabled){border-color:var(--ink-2)}
+.btn:active:not(:disabled){background:var(--rule-2)}
+.btn.primary{background:var(--cobalt);color:var(--on-cobalt);border-color:var(--cobalt);font-weight:600;padding:5px 16px}
+.btn.primary:hover:not(:disabled){background:color-mix(in srgb,var(--cobalt) 86%,#000)}
+.btn.on{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.btn:disabled{opacity:.45;cursor:default}
+input[type=text],input[type=number],select{border:1px solid var(--rule);background-color:var(--vellum);color:var(--ink);border-radius:4px;padding:4px 7px}
+input[type=number]{width:72px;font-variant-numeric:tabular-nums}
+input[aria-invalid="true"]{border-color:var(--err)}
+.ferr{grid-column:2;color:var(--err);font-size:12px}
+details.menu{position:relative}
+details.menu>summary{list-style:none;cursor:pointer}
+details.menu>summary::-webkit-details-marker{display:none}
+details.menu[open]>summary{background:var(--rule-2)}
+details.menu .pop{position:absolute;right:0;top:calc(100% + 4px);background:var(--panel);border:1px solid var(--rule);border-radius:4px;padding:4px;display:flex;flex-direction:column;min-width:180px;z-index:15;box-shadow:0 6px 20px #0002}
+details.menu .pop button{border:0;background:none;text-align:left;padding:7px 10px;border-radius:3px;cursor:pointer}
+details.menu .pop button:hover{background:var(--rule-2)}
+
+/* ---------- frame */
+main{display:grid;grid-template-columns:220px minmax(0,1fr) 300px;grid-template-rows:auto minmax(0,1fr) 270px;flex:1;min-height:0}
+#palette{grid-row:1/4;border-right:1px solid var(--rule);background:var(--panel);padding:14px;overflow:auto}
+#inspector{grid-row:1/4;grid-column:3;border-left:1px solid var(--rule);background:var(--panel);padding:14px;overflow:auto}
+h2.sec,h3{font-size:13px;font-weight:650;color:var(--ink);margin:18px 0 8px;letter-spacing:0}
+h2.sec{font-size:14px}
+h2.sec:first-child,h3:first-child{margin-top:0}
+.hint{color:var(--ink-2);font-size:12.5px}
+
+/* ---------- title block (design summary), drawn like the corner block of an assembly drawing */
+#kpis{grid-column:2;display:flex;flex-wrap:wrap;margin:12px 16px 0;border:1.5px solid var(--ink);background:var(--panel)}
+.kpi{padding:5px 12px 6px;border-right:1px solid var(--rule);min-width:96px;flex:1 1 auto}
+.kpi:last-child{border-right:0}
+.kpi small{display:block;color:var(--ink-2);font-size:11.5px;font-variation-settings:"wdth" 80}
+.kpi b{display:block;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* ---------- canvas */
+#canvasWrap{grid-column:2;position:relative;overflow:hidden}
+#canvas{width:100%;height:100%;display:block;user-select:none;touch-action:none}
+#canvas:focus-visible{outline-offset:-3px}
+.zoom{position:absolute;right:16px;top:12px;display:flex;flex-direction:column;border:1px solid var(--rule);border-radius:4px;background:var(--panel);overflow:hidden}
+.zoom .btn{width:32px;height:32px;padding:0;border:0;border-radius:0}
+.zoom .btn+.btn{border-top:1px solid var(--rule)}
+.chip text{pointer-events:none}
+
+/* ---------- results */
+#bottom{grid-column:2;border-top:1px solid var(--rule);background:var(--panel);display:flex;flex-direction:column;min-height:0}
+.tabs{display:flex;border-bottom:1px solid var(--rule);overflow-x:auto;flex:none;padding:0 8px}
+.tabs button{border:0;background:none;padding:8px 12px 7px;cursor:pointer;color:var(--ink-2);border-bottom:2px solid transparent;white-space:nowrap}
+.tabs button:hover{color:var(--ink)}
+.tabs button.active{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+.tabs button:focus-visible{outline-offset:-2px}
+.tabbody{flex:1;overflow:auto;padding:10px 16px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:4px 10px 4px 0;border-bottom:1px solid var(--rule-2);white-space:nowrap}
+thead th{color:var(--ink-2);font-weight:500;font-size:12.5px;position:sticky;top:0;background:var(--panel);border-bottom:1px solid var(--rule);font-variation-settings:"wdth" 80}
+tbody th{font-weight:400;color:var(--ink-2)}
+.rowbtn{border:0;background:none;padding:0;cursor:pointer;color:var(--cobalt);text-align:left}
+.rowbtn:hover{text-decoration:underline}
+.objlist{list-style:none;margin:0;padding:0}
+.objlist li{margin:3px 0}
+.sev-error{color:var(--err)}.sev-warning{color:var(--warn)}.ok{color:var(--ok)}
+pre{font-family:var(--mono);font-size:12px;margin:0;white-space:pre-wrap}
+.bar{height:5px;background:var(--rule-2);overflow:hidden;width:72px;display:inline-block;vertical-align:middle;margin-right:4px}
+.bar i{display:block;height:100%}
+.sweepctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.chartwrap{position:relative}
+.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--rule);border-radius:4px;padding:5px 9px;font-size:12.5px;box-shadow:0 4px 14px #0002;white-space:nowrap;display:none}
+
+/* ---------- palette & inspector */
+.tpl{border:1px solid var(--rule);border-radius:4px;padding:8px 10px;margin-bottom:6px;cursor:grab;display:flex;gap:10px;align-items:center;background:var(--vellum);width:100%;text-align:left}
+.tpl:hover{border-color:var(--ink-2)}
+.tpl svg{flex:none}
+.tpl small{display:block;color:var(--ink-2);font-size:12px}
+.field{display:grid;grid-template-columns:110px 1fr;align-items:center;gap:6px;margin:5px 0}
+.field label{color:var(--ink-2)}
+.field input,.field select{width:100%}
+dl.props{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0;font-variant-numeric:tabular-nums}
+dl.props dt{color:var(--ink-2)}
+dl.props dd{margin:0}
+
+/* ---------- toast */
+.toast{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:var(--ink);color:var(--panel);border-radius:4px;padding:9px 14px;display:flex;gap:12px;align-items:center;box-shadow:0 6px 20px #0004;max-width:min(560px,calc(100vw - 32px));z-index:20}
+.toast[hidden]{display:none}
+.toast button{background:none;border:1px solid currentColor;color:inherit;border-radius:3px;padding:2px 9px;cursor:pointer}
+
+@media (max-width:900px){
+  body{height:auto;min-height:100dvh}
+  header h1 span,header .sep{display:none}
+  main{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto 55vh auto auto;height:auto;flex:none}
+  main>*{min-width:0}
+  #palette,#inspector,#kpis,#canvasWrap,#bottom{grid-column:1;grid-row:auto}
+  #palette{border-right:0;border-bottom:1px solid var(--rule)}
+  #bottom{height:320px}
+  #kpis{margin:12px}
+}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<a class="skip" href="#canvas">Skip to the canvas</a>
+<header>
+  <h1>OCA Chiplet Composer <span>· reference GUI for tt-oca-harness</span></h1>
+  <div class="grp">
+    <label for="dname" class="sr-only">Design name</label>
+    <input id="dname" name="design-name" type="text" autocomplete="off" spellcheck="false" style="width:130px">
+    <label for="pkgTech" class="sr-only">Package technology</label>
+    <select id="pkgTech" name="package-tech"></select>
+    <span class="hint" id="subLbl">Substrate</span>
+    <input id="pkgW" name="substrate-width" type="number" inputmode="decimal" step="1" min="1" aria-label="Substrate width in mm" autocomplete="off">
+    <span class="hint" aria-hidden="true">×</span>
+    <input id="pkgH" name="substrate-height" type="number" inputmode="decimal" step="1" min="1" aria-label="Substrate height in mm" autocomplete="off">
+    <span class="hint">mm</span>
+  </div>
+  <span class="grow"></span>
+  <div class="grp" role="group" aria-label="Edit">
+    <button type="button" class="btn" id="bUndo" aria-label="Undo" title="Undo (Ctrl+Z)" disabled><span aria-hidden="true">↶</span></button>
+    <button type="button" class="btn" id="bRedo" aria-label="Redo" title="Redo (Ctrl+Shift+Z)" disabled><span aria-hidden="true">↷</span></button>
+    <button type="button" class="btn" id="tLink" aria-pressed="false" title="Click two chiplets to connect them (L)">Link tool</button>
+  </div>
+  <details class="menu" id="fileMenu">
+    <summary class="btn">File</summary>
+    <div class="pop" role="group" aria-label="File">
+      <button type="button" id="bExample">Load example design</button>
+      <button type="button" id="bImport">Import design (JSON)…</button>
+      <button type="button" id="bSave">Save design (JSON)</button>
+      <button type="button" id="bBundle" title="Design, analytic report, and an smu-vp ini and run.sh per job">Export simulation bundle</button>
+    </div>
+  </details>
+  <span class="sep" aria-hidden="true"></span>
+  <div class="grp" role="group" aria-label="Simulate">
+    <label class="hint"><input type="checkbox" id="eVP" name="harness-vp"> Harness VP</label>
+    <button type="button" class="btn primary" id="bRun"><span aria-hidden="true">▶</span> Run</button>
+  </div>
+  <button type="button" class="btn" id="bTheme" aria-label="Toggle dark mode" aria-pressed="false"><span aria-hidden="true">◐</span></button>
+  <input type="file" id="fImport" accept=".json,application/json" hidden>
+</header>
+<main id="main">
+  <aside id="palette" aria-label="Chiplet palette and backend status">
+    <h2 class="sec">Chiplets</h2>
+    <div id="tpls"></div>
+    <p class="hint">Drag a chiplet onto the substrate, or press it to add one. Each die is drawn to scale, and every one carries the Harness (SMC, SEP, SMU and AoU).</p>
+    <h2 class="sec">Harness VP</h2>
+    <div id="vpStatus" class="hint">Checking the server…</div>
+    <h2 class="sec">Keyboard</h2>
+    <dl class="props hint">
+      <dt>Arrows</dt><dd>Move the selected chiplet (Shift: 2&nbsp;mm)</dd>
+      <dt>L</dt><dd>Link tool</dd>
+      <dt>Delete</dt><dd>Delete the selection</dd>
+      <dt>+ − 0</dt><dd>Zoom in, out, fit</dd>
+      <dt>Ctrl+Z</dt><dd>Undo</dd>
+    </dl>
+  </aside>
+
+  <section id="kpis" aria-label="Design summary"></section>
+  <div id="canvasWrap">
+    <svg id="canvas" tabindex="0" role="application" aria-roledescription="package canvas"
+         aria-label="Package canvas. Select a chiplet in the inspector or by clicking, then use the arrow keys to move it."></svg>
+    <div class="zoom" role="group" aria-label="Zoom">
+      <button type="button" class="btn" id="zIn" aria-label="Zoom in"><span aria-hidden="true">+</span></button>
+      <button type="button" class="btn" id="zOut" aria-label="Zoom out"><span aria-hidden="true">−</span></button>
+      <button type="button" class="btn" id="zFit" aria-label="Fit the substrate to the view"><span aria-hidden="true">⤢</span></button>
+    </div>
+  </div>
+
+  <section id="bottom" aria-label="Results">
+    <div class="tabs" id="tabs" role="tablist" aria-label="Result views"></div>
+    <div class="tabbody" id="tabbody" role="tabpanel" tabindex="0"></div>
+  </section>
+
+  <aside id="inspector" aria-label="Inspector"></aside>
+</main>
+<div id="live" class="sr-only" aria-live="polite"></div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden><span id="toastMsg"></span><button type="button" id="toastAct" hidden></button></div>
+
+<script>
+// ============================================================ state
+const API = '';
+let CAT = null;
+let D = null;                     // design
+let EVAL = null;                  // latest analytic eval
+let SEL = null;                   // {type:'chiplet'|'link', id}
+let LINKMODE = false, LINKFROM = null;
+let VIEW = {s: 14, tx: 40, ty: 30}; // px/mm, translate
+let TAB = 'checks';
+let RUN = null;                   // {id, logs:[], state, result}
+const $ = s => document.querySelector(s);
+const uid = p => p + Math.random().toString(36).slice(2, 7);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const NBSP = '\u00a0';
+const NF = new Intl.NumberFormat(undefined, {maximumFractionDigits: 3});
+const USD = new Intl.NumberFormat(undefined, {style: 'currency', currency: 'USD', maximumFractionDigits: 0});
+const num = v => v == null || Number.isNaN(v) ? '—' : NF.format(v);
+const u = (v, unit) => v == null || Number.isNaN(v) ? '—' : `${NF.format(v)}${NBSP}${unit}`;
+const pct = v => v == null ? '—' : `${Math.round(v * 100)}%`;
+const money = v => v == null ? '—' : USD.format(v);
+function announce(msg){ const l = $('#live'); l.textContent = ''; setTimeout(() => l.textContent = msg, 30); }
+let toastTimer = null;
+function toast(msg, action){        // action: {label, fn}
+  const t = $('#toast'), b = $('#toastAct');
+  $('#toastMsg').textContent = msg;
+  if (action){ b.hidden = false; b.textContent = action.label; b.onclick = () => { action.fn(); t.hidden = true; }; }
+  else b.hidden = true;
+  t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, action ? 8000 : 5000);
+}
+
+function exampleDesign(){
+  return {
+    name: 'demo-sip',
+    package: {tech: 'ucie-s-organic', w_mm: 44, h_mm: 32},
+    chiplets: [
+      {id:'io0', name:'IO0', kind:'io', x_mm:4, y_mm:9, w_mm:6, h_mm:12, ucie_ports:4, power_w:15, scenario:'smu-aou-ext-test'},
+      {id:'c0', name:'Compute0', kind:'compute', x_mm:12, y_mm:3, w_mm:10, h_mm:10, ucie_ports:4, power_w:60, scenario:'smu-traffic-test'},
+      {id:'c1', name:'Compute1', kind:'compute', x_mm:12, y_mm:19, w_mm:10, h_mm:10, ucie_ports:4, power_w:60, scenario:'smu-traffic-test'},
+      {id:'m0', name:'Mem0', kind:'memory', x_mm:24, y_mm:3, w_mm:7, h_mm:9, ucie_ports:2, power_w:12, scenario:'smu-mailbox-test'},
+      {id:'m1', name:'Mem1', kind:'memory', x_mm:24, y_mm:20, w_mm:7, h_mm:9, ucie_ports:2, power_w:12, scenario:'smu-mailbox-test'},
+    ],
+    links: [
+      {id:'l0', a:'io0', b:'c0', modules:1}, {id:'l1', a:'io0', b:'c1', modules:1},
+      {id:'l2', a:'c0', b:'c1', modules:1}, {id:'l3', a:'c0', b:'m0', modules:1},
+      {id:'l4', a:'c1', b:'m1', modules:1},
+    ],
+    flows: [
+      {src:'c0', dst:'m0', gbs:24}, {src:'c1', dst:'m1', gbs:24},
+      {src:'io0', dst:'m1', gbs:4}, {src:'c0', dst:'c1', gbs:10},
+    ],
+    process: {}, sim: {sim_time_ms: 50, parallel: 4},
+  };
+}
+
+// ============================================================ boot
+async function boot(){
+  CAT = await (await fetch(API + '/api/catalog')).json();
+  const pt = $('#pkgTech');
+  pt.innerHTML = Object.entries(CAT.packages).map(([k, v]) => `<option value="${k}">${esc(v.label)}</option>`).join('');
+  $('#tpls').innerHTML = CAT.chiplets.map((t, i) => `
+    <button type="button" class="tpl" draggable="true" data-i="${i}" aria-label="Add ${esc(t.label)}, ${t.w_mm} by ${t.h_mm} mm">
+      <svg width="42" height="42" viewBox="0 0 42 42" aria-hidden="true"><rect x="${21 - t.w_mm * 2}" y="${21 - t.h_mm * 2}" width="${t.w_mm * 4}" height="${t.h_mm * 4}" rx="1" fill="var(--si)" stroke="var(--si-edge)"/>
+        <rect x="${21 - t.w_mm * 2}" y="${21 - t.h_mm * 2}" width="${t.w_mm * 4}" height="3" fill="${t.color}"/></svg>
+      <span><b>${esc(t.label)}</b><small>${t.w_mm}${NBSP}×${NBSP}${t.h_mm}${NBSP}mm, ${t.ucie_ports} UCIe module${t.ucie_ports > 1 ? 's' : ''}, ${t.power_w}${NBSP}W</small></span>
+    </button>`).join('');
+  document.querySelectorAll('.tpl').forEach(el => {
+    el.addEventListener('dragstart', e => e.dataTransfer.setData('text/tpl', el.dataset.i));
+    el.addEventListener('click', () => addChiplet(+el.dataset.i));
+  });
+  const vs = CAT.harness_vp;
+  $('#vpStatus').innerHTML = `<dl class="props">
+    <dt>Model repo</dt><dd class="${vs.model_found ? 'ok' : 'sev-error'}">${vs.model_found ? 'Found' : '⚠ Missing'}</dd>
+    <dt>smu-vp</dt><dd class="${vs.smu_vp_found ? 'ok' : 'sev-warning'}">${vs.smu_vp_found ? 'Ready' : '⚠ Not built'}</dd>
+    <dt>Scenarios</dt><dd>${vs.scenarios.length}</dd></dl>
+    <span class="mono" translate="no" style="font-size:10.5px;word-break:break-all">${esc(vs.smu_vp)}</span>`;
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('oca-design')); } catch {}
+  load(saved || exampleDesign());
+  try { const t = localStorage.getItem('oca-theme'); if (t) document.documentElement.dataset.theme = t; } catch {}
+  syncTheme();
+  const ht = new URLSearchParams(location.hash.slice(1)).get('tab');
+  if (TABS.some(([k]) => k === ht)) TAB = ht;
+  fitView();
+}
+
+function load(d){ D = d; SEL = null; syncHeader(); changed(); }
+function undo(){ if (!HIST.length) return; FUT.push(LAST); LAST = HIST.pop(); D = JSON.parse(LAST); SEL = null; syncHeader(); changed(true); }
+function redo(){ if (!FUT.length) return; HIST.push(LAST); LAST = FUT.pop(); D = JSON.parse(LAST); SEL = null; syncHeader(); changed(true); }
+function updateUndoButtons(){ const u = $('#bUndo'), r = $('#bRedo'); if (u) u.disabled = !HIST.length; if (r) r.disabled = !FUT.length; }
+function syncHeader(){
+  $('#dname').value = D.name; $('#pkgTech').value = D.package.tech;
+  $('#pkgW').value = D.package.w_mm; $('#pkgH').value = D.package.h_mm;
+}
+let evalTimer = null;
+let HIST = [], FUT = [], LAST = null;
+function changed(fromHistory){
+  const cur = JSON.stringify(D);
+  if (!fromHistory && cur !== LAST){
+    if (LAST != null){ HIST.push(LAST); if (HIST.length > 200) HIST.shift(); }
+    FUT = []; LAST = cur;
+  }
+  updateUndoButtons();
+  try { localStorage.setItem('oca-design', cur); } catch {}
+  render();
+  clearTimeout(evalTimer);
+  evalTimer = setTimeout(evaluate, 120);
+}
+async function evaluate(){
+  try {
+    const body = JSON.stringify(D);
+    const r = await fetch(API + '/api/evaluate', {method:'POST', headers:{'Content-Type':'application/json'}, body});
+    EVAL = r.ok ? await r.json() : null;
+    if (EVAL) EVAL.forJSON = body;
+  } catch { EVAL = null; }
+  render();
+}
+
+// ============================================================ mutations
+function tplOf(kind){ return CAT.chiplets.find(t => t.kind === kind) || CAT.chiplets[0]; }
+function addChiplet(i, x, y){
+  const t = CAT.chiplets[i];
+  const n = D.chiplets.filter(c => c.kind === t.kind).length;
+  const c = {id: uid(t.kind[0]), name: `${t.kind[0].toUpperCase()}${t.kind.slice(1)}${n}`, kind: t.kind,
+    x_mm: x ?? 1, y_mm: y ?? 1, w_mm: t.w_mm, h_mm: t.h_mm, ucie_ports: t.ucie_ports, power_w: t.power_w,
+    scenario: CAT.harness_vp.scenarios.includes('smu-aou-ext-test') ? 'smu-aou-ext-test' : (CAT.harness_vp.scenarios[0] || null)};
+  D.chiplets.push(c); SEL = {type:'chiplet', id:c.id}; changed();
+  announce(`Added ${c.name}. Use the arrow keys to move it.`);
+}
+function addLink(a, b){
+  if (a === b) return;
+  if (D.links.some(l => (l.a === a && l.b === b) || (l.a === b && l.b === a))){ toast(`${chip(a).name} and ${chip(b).name} are already linked. Raise the link's modules instead.`); return; }
+  D.links.push({id: uid('l'), a, b, modules: 1});
+  SEL = {type:'link', id: D.links.at(-1).id}; changed();
+  announce(`Linked ${chip(a).name} and ${chip(b).name}.`);
+}
+function del(){
+  if (!SEL) return;
+  const what = SEL.type === 'chiplet' ? chip(SEL.id)?.name : (l => l && `link ${chip(l.a)?.name}–${chip(l.b)?.name}`)(D.links.find(x => x.id === SEL.id));
+  if (SEL.type === 'chiplet'){
+    D.chiplets = D.chiplets.filter(c => c.id !== SEL.id);
+    D.links = D.links.filter(l => l.a !== SEL.id && l.b !== SEL.id);
+    D.flows = D.flows.filter(f => f.src !== SEL.id && f.dst !== SEL.id);
+  } else D.links = D.links.filter(l => l.id !== SEL.id);
+  SEL = null; changed();
+  toast(`Deleted ${what}.`, {label: 'Undo', fn: undo});
+}
+
+// ============================================================ canvas
+const svg = $('#canvas');
+const NS = 'http://www.w3.org/2000/svg';
+function fitView(){
+  const r = svg.getBoundingClientRect();
+  const s = Math.min((r.width - 60) / D.package.w_mm, (r.height - 60) / D.package.h_mm);
+  VIEW.s = Math.max(4, s); VIEW.tx = (r.width - D.package.w_mm * VIEW.s) / 2; VIEW.ty = (r.height - D.package.h_mm * VIEW.s) / 2;
+  render();
+}
+const toMM = (px, py) => [(px - VIEW.tx) / VIEW.s, (py - VIEW.ty) / VIEW.s];
+const chip = id => D.chiplets.find(c => c.id === id);
+const linkEval = id => EVAL?.links.find(l => l.id === id);
+const vpFresh = () => !!(RUN?.result?.harness_vp?.available && RUN.designJSON === (CUR || JSON.stringify(D)));
+const vpLink = id => vpFresh() ? RUN.result.harness_vp.links?.find(j => j.link === id)?.probe : null;
+const issuesFor = id => (EVAL?.issues || []).filter(i => i.ref === id);
+function utilColor(u){
+  if (u == null) return 'var(--ink-2)';
+  if (u >= 1) return 'var(--err)';
+  if (u >= 0.7) return 'var(--warn)';
+  return 'var(--si)';
+}
+function anchor(a, b){ // point on a's border toward b's center
+  const ax = a.x_mm + a.w_mm/2, ay = a.y_mm + a.h_mm/2, bx = b.x_mm + b.w_mm/2, by = b.y_mm + b.h_mm/2;
+  const dx = bx - ax, dy = by - ay;
+  const t = Math.min(Math.abs((a.w_mm/2) / (dx || 1e-9)), Math.abs((a.h_mm/2) / (dy || 1e-9)));
+  return [ax + dx*t, ay + dy*t];
+}
+
+let CUR = '';                      // JSON of D for this render (cheap freshness checks)
+function render(){
+  CUR = JSON.stringify(D);
+  renderCanvas(); renderKPIs(); renderInspector(); renderTabs();
+}
+function fitText(t, widthMm, fontMm){ const max = Math.max(1, Math.floor(widthMm / (fontMm * 0.6))); return t.length > max ? t.slice(0, Math.max(1, max - 1)) + '…' : t; }
+function renderCanvas(){
+  const {s, tx, ty} = VIEW;
+  const P = D.package;
+  const pkg = CAT.packages[P.tech];
+  const pitch = pkg.bump_pitch_um / 1000, dotsOK = pitch * s >= 3.2;
+  let h = `<defs>
+    <linearGradient id="siSheen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--si-hi)"/><stop offset=".55" stop-color="var(--si)"/><stop offset="1" stop-color="var(--si)"/></linearGradient>
+    <pattern id="bumps" patternUnits="userSpaceOnUse" width="${pitch}" height="${pitch}"><circle cx="${pitch/2}" cy="${pitch/2}" r="${pitch*0.32}" fill="var(--gold)"/></pattern>
+  </defs><g transform="translate(${tx},${ty}) scale(${s})">`;
+  // substrate (solder mask) with a 1 mm / 5 mm grid
+  h += `<rect x="0" y="0" width="${P.w_mm}" height="${P.h_mm}" fill="var(--mask)" rx="0.4"/>`;
+  for (let x = 1; x < P.w_mm; x++) h += `<line x1="${x}" y1="0" x2="${x}" y2="${P.h_mm}" stroke="var(--mask-line)" stroke-opacity="${x%5?0.35:0.8}" stroke-width="${1/s}"/>`;
+  for (let y = 1; y < P.h_mm; y++) h += `<line x1="0" y1="${y}" x2="${P.w_mm}" y2="${y}" stroke="var(--mask-line)" stroke-opacity="${y%5?0.35:0.8}" stroke-width="${1/s}"/>`;
+  // dimension lines, as on an assembly drawing
+  const dy = -14/s, dx = -14/s, tk = 4/s, f = 11/s, sw = 1/s;
+  h += `<g stroke="var(--ink-2)" stroke-width="${sw}" fill="none">
+      <line x1="0" y1="${dy}" x2="${P.w_mm}" y2="${dy}"/><line x1="0" y1="${dy - tk}" x2="0" y2="${-2/s}"/><line x1="${P.w_mm}" y1="${dy - tk}" x2="${P.w_mm}" y2="${-2/s}"/>
+      <line x1="${dx}" y1="0" x2="${dx}" y2="${P.h_mm}"/><line x1="${dx - tk}" y1="0" x2="${-2/s}" y2="0"/><line x1="${dx - tk}" y1="${P.h_mm}" x2="${-2/s}" y2="${P.h_mm}"/></g>
+    <text x="${P.w_mm/2}" y="${dy - 3/s}" font-size="${f}" text-anchor="middle" fill="var(--ink-2)" style="font-variant-numeric:tabular-nums">${P.w_mm} mm</text>
+    <text transform="translate(${dx - 4/s},${P.h_mm/2}) rotate(-90)" font-size="${f}" text-anchor="middle" fill="var(--ink-2)">${P.h_mm} mm</text>`;
+  // links: Manhattan route between PHY pad-edge midpoints (what the model measures)
+  const physOK = EVAL?.phys && EVAL.forJSON === (CUR || JSON.stringify(D));
+  const phyOf = (lid, end) => physOK ? EVAL.phys.find(p => p.link === lid && p.end === end) : null;
+  let labels = '';
+  for (const l of D.links){
+    const a = chip(l.a), b = chip(l.b); if (!a || !b) continue;
+    const e = linkEval(l.id);
+    const pa = phyOf(l.id, 'a'), pb = phyOf(l.id, 'b');
+    let pts;
+    if (pa && pb){
+      const ew = 'EW'.includes(pa.edge), ewb = 'EW'.includes(pb.edge);
+      if (ew && ewb){ const mx = (pa.cx + pb.cx) / 2; pts = [[pa.cx, pa.cy], [mx, pa.cy], [mx, pb.cy], [pb.cx, pb.cy]]; }
+      else if (!ew && !ewb){ const my = (pa.cy + pb.cy) / 2; pts = [[pa.cx, pa.cy], [pa.cx, my], [pb.cx, my], [pb.cx, pb.cy]]; }
+      else if (ew){ pts = [[pa.cx, pa.cy], [pb.cx, pa.cy], [pb.cx, pb.cy]]; }
+      else { pts = [[pa.cx, pa.cy], [pa.cx, pb.cy], [pb.cx, pb.cy]]; }
+    } else pts = [anchor(a, b), anchor(b, a)];
+    const d = 'M' + pts.map(p => p.join(',')).join('L');
+    const mid = pts.length === 2 ? [(pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2]
+                                 : [(pts[1][0] + pts[pts.length - 2][0]) / 2, (pts[1][1] + pts[pts.length - 2][1]) / 2];
+    const sel = SEL?.type === 'link' && SEL.id === l.id;
+    const col = e && !e.reach_ok ? 'var(--err)' : e?.utilization >= 1 ? 'var(--err)' : e?.utilization >= 0.7 ? 'var(--warn)' : 'var(--cu)';
+    const w = (2 + 1.5 * (l.modules - 1)) / s;
+    const tipTxt = e ? `${chip(l.a).name} ⟷ ${chip(l.b).name}: ${e.latency_ns} ns analytic, ${e.channel_mm} mm channel, ${e.bw_gbs_per_dir} GB/s/dir, ${Math.round(e.utilization*100)}% util` + (vpLink(l.id) ? `; VP firmware-visible ${vpLink(l.id).ns_per_access} ns/access` : '') : '';
+    h += `<g class="lnk" data-id="${l.id}" style="cursor:pointer"><title>${esc(tipTxt)}</title>
+      <path d="${d}" fill="none" stroke="transparent" stroke-width="${12/s}"/>
+      ${sel ? `<path d="${d}" fill="none" stroke="var(--sel)" stroke-width="${w + 4/s}" stroke-linejoin="round" stroke-linecap="round"/>` : ''}
+      <path d="${d}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round" ${e && !e.reach_ok ? `stroke-dasharray="${4/s} ${3/s}"` : ''}/>
+    </g>`;
+    if (e) labels += `<text x="${mid[0]}" y="${mid[1] - 4/s}" font-size="${10.5/s}" text-anchor="middle" fill="var(--mask-ink)" paint-order="stroke" stroke="var(--mask)" stroke-width="${3.5/s}" style="pointer-events:none;font-variant-numeric:tabular-nums">${e.latency_ns.toFixed(1)} ns, ${Math.round(e.utilization*100)}%${vpLink(l.id) ? ', VP' : ''}</text>`;
+  }
+  // chiplets
+  for (const c of D.chiplets){
+    const t = tplOf(c.kind);
+    const sel = SEL?.type === 'chiplet' && SEL.id === c.id;
+    const bad = issuesFor(c.id).some(i => i.severity === 'error');
+    const from = LINKFROM === c.id;
+    const nm = 12/s, sm = 10/s;
+    h += `<g class="chip" data-id="${c.id}" style="cursor:${LINKMODE ? 'crosshair' : 'move'}">
+      <rect x="${c.x_mm}" y="${c.y_mm}" width="${c.w_mm}" height="${c.h_mm}" rx="0.12" fill="url(#siSheen)"
+        stroke="${sel || from ? 'var(--sel)' : bad ? 'var(--err)' : 'var(--si-edge)'}" stroke-width="${(sel || from || bad ? 3 : 1)/s}"/>
+      <rect x="${c.x_mm}" y="${c.y_mm}" width="${c.w_mm}" height="${Math.min(0.35, c.h_mm / 8)}" fill="${t.color}" style="pointer-events:none"/>
+      <text x="${c.x_mm + c.w_mm/2}" y="${c.y_mm + c.h_mm/2}" font-size="${nm}" fill="var(--si-ink)" text-anchor="middle" font-weight="650">${esc(fitText(c.name, c.w_mm - 0.4, nm))}</text>
+      ${c.h_mm * s >= 64 ? `<text x="${c.x_mm + c.w_mm/2}" y="${c.y_mm + c.h_mm/2 + 15/s}" font-size="${sm}" fill="var(--si-ink)" fill-opacity=".75" text-anchor="middle" style="font-variant-numeric:tabular-nums">${esc(fitText(`${c.w_mm} × ${c.h_mm} mm, ${c.power_w} W`, c.w_mm - 0.4, sm))}</text>` : ''}
+      <title>${esc(c.name)}, ${esc(t.label)}, ${c.w_mm} × ${c.h_mm} mm</title>
+      <rect class="rz" data-id="${c.id}" x="${c.x_mm + c.w_mm - 8/s}" y="${c.y_mm + c.h_mm - 8/s}" width="${8/s}" height="${8/s}" fill="var(--si-ink)" fill-opacity=".5" style="cursor:nwse-resize"/>
+    </g>`;
+  }
+  if (physOK) for (const p of EVAL.phys){
+    const sel = SEL?.type === 'link' && SEL.id === p.link;
+    h += `<rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}" fill="${dotsOK ? 'url(#bumps)' : 'var(--gold)'}" fill-opacity="${dotsOK ? 1 : 0.85}" stroke="${sel ? 'var(--sel)' : 'var(--gold)'}" stroke-width="${(sel ? 2 : 0.6)/s}" style="pointer-events:none"><title>UCIe PHY on the ${({N:'north',S:'south',E:'east',W:'west'})[p.edge]} edge, ${'EW'.includes(p.edge) ? p.h : p.w} mm of shoreline, ${pkg.bump_pitch_um} µm bump pitch</title></rect>`;
+  }
+  h += labels + `</g>`;
+  if (LINKMODE) h += `<text x="16" y="22" fill="var(--cobalt)" font-size="13" font-weight="600">Link tool: ${LINKFROM ? 'click the second chiplet' : 'click the first chiplet'}. Press Esc to stop.</text>`;
+  svg.innerHTML = h;
+}
+
+// interaction
+let drag = null;
+svg.addEventListener('pointerdown', e => {
+  const r = svg.getBoundingClientRect();
+  const px = e.clientX - r.left, py = e.clientY - r.top;
+  const rz = e.target.closest('.rz'), g = e.target.closest('.chip'), lk = e.target.closest('.lnk');
+  if (rz){ const c = chip(rz.dataset.id); SEL = {type:'chiplet', id:c.id}; drag = {mode:'resize', c, px, py, w:c.w_mm, h:c.h_mm}; }
+  else if (g){
+    const c = chip(g.dataset.id);
+    if (LINKMODE){ if (!LINKFROM){ LINKFROM = c.id; announce(`${c.name} chosen. Click the second chiplet.`); } else { addLink(LINKFROM, c.id); LINKFROM = null; } render(); return; }
+    SEL = {type:'chiplet', id:c.id}; drag = {mode:'move', c, px, py, x:c.x_mm, y:c.y_mm};
+  } else if (lk){ SEL = {type:'link', id:lk.dataset.id}; render(); return; }
+  else { SEL = null; drag = {mode:'pan', px, py, tx:VIEW.tx, ty:VIEW.ty}; }
+  svg.setPointerCapture(e.pointerId); render();
+});
+svg.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const r = svg.getBoundingClientRect();
+  const dx = (e.clientX - r.left - drag.px), dy = (e.clientY - r.top - drag.py);
+  const snap = v => Math.round(v * 2) / 2;
+  if (drag.mode === 'pan'){ VIEW.tx = drag.tx + dx; VIEW.ty = drag.ty + dy; renderCanvas(); return; }
+  if (drag.mode === 'move'){ drag.c.x_mm = snap(drag.x + dx / VIEW.s); drag.c.y_mm = snap(drag.y + dy / VIEW.s); }
+  if (drag.mode === 'resize'){ drag.c.w_mm = Math.max(1, snap(drag.w + dx / VIEW.s)); drag.c.h_mm = Math.max(1, snap(drag.h + dy / VIEW.s)); }
+  drag.moved = true; renderCanvas(); renderInspector();
+});
+svg.addEventListener('pointerup', () => { if (drag?.moved && drag.mode !== 'pan') changed(); drag = null; });
+svg.addEventListener('wheel', e => {
+  e.preventDefault();
+  const r = svg.getBoundingClientRect(); const px = e.clientX - r.left, py = e.clientY - r.top;
+  const [mx, my] = toMM(px, py);
+  VIEW.s = Math.min(80, Math.max(3, VIEW.s * (e.deltaY < 0 ? 1.12 : 1/1.12)));
+  VIEW.tx = px - mx * VIEW.s; VIEW.ty = py - my * VIEW.s; renderCanvas();
+}, {passive:false});
+svg.addEventListener('dragover', e => e.preventDefault());
+svg.addEventListener('drop', e => {
+  e.preventDefault(); const i = e.dataTransfer.getData('text/tpl'); if (i === '') return;
+  const r = svg.getBoundingClientRect(); const [x, y] = toMM(e.clientX - r.left, e.clientY - r.top);
+  const t = CAT.chiplets[+i];
+  addChiplet(+i, Math.round((x - t.w_mm/2) * 2) / 2, Math.round((y - t.h_mm/2) * 2) / 2);
+});
+function zoomBy(f){
+  const r = svg.getBoundingClientRect(), px = r.width / 2, py = r.height / 2, [mx, my] = toMM(px, py);
+  VIEW.s = Math.min(80, Math.max(3, VIEW.s * f)); VIEW.tx = px - mx * VIEW.s; VIEW.ty = py - my * VIEW.s; renderCanvas();
+}
+let nudgeTimer = null;
+window.addEventListener('keydown', e => {
+  if (e.target.matches('input,select,textarea')) return;
+  const arrows = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]};
+  if (arrows[e.key] && SEL?.type === 'chiplet' && !e.target.closest('[role=tablist]')){
+    e.preventDefault(); const c = chip(SEL.id), st = e.shiftKey ? 2 : 0.5;
+    c.x_mm += arrows[e.key][0] * st; c.y_mm += arrows[e.key][1] * st;
+    renderCanvas(); renderInspector();
+    clearTimeout(nudgeTimer); nudgeTimer = setTimeout(() => { changed(); announce(`${c.name} at ${c.x_mm}, ${c.y_mm} mm`); }, 300);
+    return;
+  }
+  if (e.key === '+' || e.key === '='){ zoomBy(1.2); return; }
+  if (e.key === '-' || e.key === '_'){ zoomBy(1/1.2); return; }
+  if (e.key === '0' && !e.ctrlKey && !e.metaKey){ fitView(); return; }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')){ e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')){ e.preventDefault(); redo(); return; }
+  if (e.key === 'Delete' || e.key === 'Backspace') del();
+  if (e.key === 'l' || e.key === 'L') toggleLink();
+  if (e.key === 'Escape'){ LINKMODE = false; LINKFROM = null; $('#tLink').classList.remove('on'); $('#tLink').setAttribute('aria-pressed', 'false'); render(); }
+});
+window.addEventListener('resize', renderCanvas);
+function toggleLink(){ LINKMODE = !LINKMODE; LINKFROM = null; $('#tLink').classList.toggle('on', LINKMODE); $('#tLink').setAttribute('aria-pressed', String(LINKMODE));
+  announce(LINKMODE ? 'Link tool on. Click the first chiplet.' : 'Link tool off.'); render(); }
+
+// ============================================================ KPIs
+let lastErr = null;
+function renderKPIs(){
+  const s = EVAL?.summary;
+  if (!s){ $('#kpis').innerHTML = '<span class="hint">Evaluating…</span>'; return; }
+  const k = (label, v, cls='') => `<div class="kpi"><small>${label}</small><b class="${cls}">${v}</b></div>`;
+  const maxLat = Math.max(0, ...EVAL.flows.filter(f => f.routable).map(f => f.loaded_latency_ns));
+  $('#kpis').innerHTML =
+    k('DRC', s.errors ? `⚠ ${s.errors} error${s.errors > 1 ? 's' : ''}` : s.warnings ? `${s.warnings} warning${s.warnings > 1 ? 's' : ''}` : '✓ Clean', s.errors ? 'sev-error' : s.warnings ? 'sev-warning' : 'ok') +
+    k('Die area', u(s.total_die_area_mm2, 'mm²')) +
+    k('Substrate fill', pct(s.area_utilization)) +
+    k('Power', u(+(s.die_power_w + s.d2d_power_w).toFixed(1), 'W')) +
+    k('D2D power', u(s.d2d_power_w, 'W')) +
+    k('Max link util', pct(s.max_link_utilization), s.max_link_utilization >= 1 ? 'sev-error' : s.max_link_utilization >= .7 ? 'sev-warning' : '') +
+    k('Worst flow latency', u(+maxLat.toFixed(1), 'ns')) +
+    k('Silicon + package', money(s.silicon_cost_usd + s.package_cost_usd)) +
+    k('Package', `${esc(CAT.packages[D.package.tech].label.split(' (')[0])}, reach ${CAT.packages[D.package.tech].max_reach_mm}${NBSP}mm`);
+  if (lastErr !== null && s.errors !== lastErr) announce(s.errors ? `${s.errors} DRC error${s.errors > 1 ? 's' : ''}. See the Checks tab.` : 'DRC clean.');
+  lastErr = s.errors;
+}
+
+// ============================================================ inspector
+function fld(label, key, val, type='number', extra='', attr='data-k'){
+  const id = `f-${attr}-${key}`;
+  const more = type === 'number' ? 'inputmode="decimal"' : 'spellcheck="false"';
+  return `<div class="field"><label for="${id}">${label}</label><input id="${id}" name="${key}" ${attr}="${key}" type="${type}" autocomplete="off" ${more} value="${esc(val ?? '')}" ${extra} aria-describedby="${id}-err"><div class="ferr" id="${id}-err" aria-live="polite"></div></div>`;
+}
+function validField(inp){
+  const err = document.getElementById(inp.id + '-err');
+  let msg = '';
+  if (inp.type === 'number' && inp.value !== ''){
+    const v = +inp.value;
+    if (Number.isNaN(v)) msg = 'Enter a number.';
+    else if (inp.min !== '' && v < +inp.min) msg = `Enter ${inp.min} or more.`;
+    else if (inp.max !== '' && v > +inp.max) msg = `Enter ${inp.max} or less.`;
+  } else if (inp.type === 'text' && inp.required && !inp.value.trim()) msg = 'Enter a name.';
+  inp.setAttribute('aria-invalid', msg ? 'true' : 'false');
+  if (err) err.textContent = msg;
+  if (msg) inp.focus();
+  return !msg;
+}
+function renderInspector(){
+  const el = $('#inspector');
+  if (document.activeElement && el.contains(document.activeElement) && drag == null && SEL && el.dataset.sel === `${SEL.type}:${SEL.id}`) {
+    // keep focus while typing; just refresh read-only parts
+    const ro = el.querySelector('#ro'); if (ro) ro.innerHTML = roHTML(); return;
+  }
+  el.dataset.sel = SEL ? `${SEL.type}:${SEL.id}` : '';
+  if (!SEL){ el.innerHTML = designInspector(); bindInspector(el, null); return; }
+  if (SEL.type === 'chiplet'){
+    const c = chip(SEL.id); if (!c){ SEL = null; return renderInspector(); }
+    const scen = CAT.harness_vp.scenarios;
+    const others = D.chiplets.filter(o => o.id !== c.id);
+    el.innerHTML = `<h2 class="sec">Chiplet</h2>
+      ${fld('Name', 'name', c.name, 'text', 'required')}
+      <div class="field"><label for="f-kind">Type</label><select id="f-kind" name="kind" data-k="kind">${CAT.chiplets.map(t => `<option value="${t.kind}" ${t.kind===c.kind?'selected':''}>${esc(t.label)}</option>`).join('')}</select></div>
+      ${fld('X (mm)', 'x_mm', c.x_mm, 'number', 'step="0.5"')}${fld('Y (mm)', 'y_mm', c.y_mm, 'number', 'step="0.5"')}
+      ${fld('Width (mm)', 'w_mm', c.w_mm, 'number', 'step="0.5" min="1"')}${fld('Height (mm)', 'h_mm', c.h_mm, 'number', 'step="0.5" min="1"')}
+      ${fld('UCIe modules', 'ucie_ports', c.ucie_ports, 'number', 'min="1" max="16"')}
+      ${fld('Power (W)', 'power_w', c.power_w, 'number', 'step="1" min="0"')}
+      <h3>Connect</h3>
+      <div class="field"><label for="f-connect">Link to</label><select id="f-connect" name="connect">${others.map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select></div>
+      <p><button type="button" class="btn" id="bConnect" ${others.length ? '' : 'disabled'}>Add link</button></p>
+      <h3>Harness</h3>
+      <div class="hint">SMC, SEP, SMU and AoU are present on every OCA chiplet.</div>
+      <div class="field"><label for="f-scen">VP scenario</label><select id="f-scen" name="scenario" data-k="scenario">${scen.length ? scen.map(s => `<option value="${s}" ${s===c.scenario?'selected':''}>${s}${(CAT.harness_vp.aou_scenarios||[]).includes(s) ? ' ⟷ AoU' : ''}</option>`).join('') : '<option>(model repo not found)</option>'}</select></div>
+      <div class="hint">${(CAT.harness_vp.aou_scenarios||[]).includes(c.scenario) ? 'Crosses the AoU: the package-derived bridge_delay_ns affects this run.' : 'On-die only: bridge_delay_ns is not exercised by this scenario.'}</div>
+      <div id="ro">${roHTML()}</div>
+      <p><button type="button" class="btn" id="bDel">Delete chiplet</button></p>`;
+    bindInspector(el, c);
+    $('#bConnect').onclick = () => addLink(c.id, $('#f-connect').value);
+  } else {
+    const l = D.links.find(x => x.id === SEL.id); if (!l){ SEL = null; return renderInspector(); }
+    const ld = CAT.link_defaults;
+    el.innerHTML = `<h2 class="sec">UCIe link</h2>
+      <div class="hint">${esc(chip(l.a)?.name)} <span aria-hidden="true">⟷</span><span class="sr-only">to</span> ${esc(chip(l.b)?.name)}</div>
+      ${fld('Modules', 'modules', l.modules, 'number', 'min="1" max="8"')}
+      ${fld('Data rate (GT/s)', 'data_rate_gtps', l.data_rate_gtps, 'number', `min="1" max="64" placeholder="Default ${ld.data_rate_gtps}…"`)}
+      ${fld('AoU fixed (ns)', 'aou_fixed_ns', l.aou_fixed_ns, 'number', `step="0.5" min="0" placeholder="Default ${ld.aou_fixed_ns}…"`)}
+      ${fld('PHY (ns)', 'phy_ns', l.phy_ns, 'number', `step="0.5" min="0" placeholder="Default ${ld.phy_ns}…"`)}
+      <div id="ro">${roHTML()}</div>
+      <p><button type="button" class="btn" id="bDel">Delete link</button></p>`;
+    bindInspector(el, l);
+  }
+  const bd = $('#bDel'); if (bd) bd.onclick = del;
+}
+function roHTML(){
+  if (!SEL) return '';
+  if (SEL.type === 'chiplet'){
+    const iss = issuesFor(SEL.id);
+    const die = EVAL?.dies.find(d => d.id === SEL.id);
+    return `<h3>Evaluation</h3>${die ? `<div class="hint">Area ${u(die.area_mm2, 'mm²')}, yield ${(die.yield*100).toFixed(1)}%, about ${money(die.cost_usd)} per good die.</div>` : ''}
+      ${iss.map(i => `<div class="sev-${i.severity}">● ${esc(i.message)}</div>`).join('')}`;
+  }
+  const e = linkEval(SEL.id); if (!e) return '';
+  return `<h3>Derived</h3><table>
+    <tr><th scope="row">Edge gap</th><td>${u(e.edge_gap_mm, 'mm')}</td></tr>
+    <tr><th scope="row">Channel</th><td class="${e.reach_ok?'':'sev-error'}">${e.reach_ok ? '' : '⚠ '}${u(e.channel_mm, 'mm')}</td></tr>
+    <tr><th scope="row">Lanes</th><td>${e.lanes}</td></tr>
+    <tr><th scope="row">BW per direction</th><td>${u(e.bw_gbs_per_dir, 'GB/s')}</td></tr>
+    <tr><th scope="row">Load fwd / rev</th><td>${num(e.load_gbs.fwd)} / ${u(e.load_gbs.rev, 'GB/s')}</td></tr>
+    <tr><th scope="row">Latency</th><td>${u(e.latency_ns, 'ns')}</td></tr>
+    <tr><th scope="row">Shoreline</th><td>${u(e.shoreline_mm, 'mm')} per die</td></tr>
+    ${(() => { const pa = EVAL?.phys?.find(p => p.link === SEL.id && p.end === 'a'), pb = EVAL?.phys?.find(p => p.link === SEL.id && p.end === 'b');
+      return pa && pb ? `<tr><th scope="row">PHY edges</th><td>${esc(chip(pa.chip)?.name)} ${({N:'north',S:'south',E:'east',W:'west'})[pa.edge]}, ${esc(chip(pb.chip)?.name)} ${({N:'north',S:'south',E:'east',W:'west'})[pb.edge]}</td></tr>` : ''; })()}
+    ${vpLink(SEL.id) ? `<tr><th scope="row">VP measured</th><td>${u(vpLink(SEL.id).ns_per_access, 'ns')} per access</td></tr>` : ''}
+    </table><p class="hint">The Harness VP receives this latency as <span class="mono" translate="no">dut.aou.bridge_delay_ns = ${e.aou_bridge_delay_ns}</span>.</p>`;
+}
+function designInspector(){
+  const pkg = CAT.packages[D.package.tech];
+  const p = {...CAT.process, ...D.process};
+  const objs = `<ul class="objlist">${D.chiplets.map(c => `<li><button type="button" class="rowbtn" data-sel="chiplet:${c.id}">${esc(c.name)}</button> <span class="hint">${c.w_mm}${NBSP}×${NBSP}${c.h_mm}${NBSP}mm</span></li>`).join('')}
+    ${D.links.map(l => `<li><button type="button" class="rowbtn" data-sel="link:${l.id}">${esc(chip(l.a)?.name)} – ${esc(chip(l.b)?.name)}</button> <span class="hint">link</span></li>`).join('')}</ul>`;
+  return `<h2 class="sec">Design</h2><p class="hint">Select a chiplet or link to edit it, here or on the canvas. Connect chiplets with the link tool (L) or from a chiplet's inspector.</p>
+    <h3>Objects</h3>${D.chiplets.length ? objs : '<p class="hint">No chiplets yet. Add one from the palette.</p>'}
+    <h3>${esc(pkg.label)}</h3>
+    <dl class="props">
+      <dt>UCIe flavour</dt><dd>${pkg.ucie_flavor === 'advanced' ? 'Advanced' : 'Standard'}</dd>
+      <dt>Max reach</dt><dd>${u(pkg.max_reach_mm, 'mm')}</dd>
+      <dt>Bump pitch</dt><dd>${u(pkg.bump_pitch_um, 'µm')}</dd>
+      <dt>Lanes per module</dt><dd>${pkg.lanes_per_module}</dd>
+      <dt>Energy</dt><dd>${u(pkg.energy_pj_per_bit, 'pJ/bit')}</dd>
+      <dt>Min die gap</dt><dd>${u(pkg.min_die_gap_mm, 'mm')}</dd>
+      <dt>Flight time</dt><dd>${u(pkg.flight_ps_per_mm, 'ps/mm')}</dd>
+      <dt>Substrate cost</dt><dd>${money(pkg.cost_per_mm2 * 1000)} per 1000${NBSP}mm²</dd>
+    </dl>
+    <h3>Process (cost model)</h3>
+    ${fld('D0 (per cm²)', 'defect_density_per_cm2', p.defect_density_per_cm2, 'number', 'step="0.01" min="0"', 'data-p')}
+    ${fld('Wafer cost ($)', 'wafer_cost_usd', p.wafer_cost_usd, 'number', 'step="500" min="0"', 'data-p')}
+    <h3>Simulation</h3>
+    ${fld('Sim time (ms)', 'sim_time_ms', D.sim.sim_time_ms ?? 50, 'number', 'min="1" max="10000"', 'data-s')}
+    <p class="hint">Numbers are illustrative defaults loosely based on public UCIe targets — not vendor data.</p>`;
+}
+function bindInspector(el, obj){
+  el.querySelectorAll('[data-sel]').forEach(b => b.onclick = () => { const [type, id] = b.dataset.sel.split(':'); SEL = {type, id}; render(); $('#inspector h2')?.focus?.(); });
+  el.querySelectorAll('[data-k]').forEach(inp => inp.addEventListener('change', () => {
+    if (inp.tagName === 'INPUT' && !validField(inp)) return;
+    const k = inp.dataset.k; let v = inp.value;
+    if (inp.type === 'number') v = v === '' ? null : +v;
+    obj[k] = v;
+    if (k === 'kind'){ const t = tplOf(v); Object.assign(obj, {w_mm:t.w_mm, h_mm:t.h_mm, ucie_ports:t.ucie_ports, power_w:t.power_w}); el.dataset.sel=''; }
+    changed();
+  }));
+  el.querySelectorAll('[data-p]').forEach(inp => inp.addEventListener('change', () => { if (validField(inp)) { D.process[inp.dataset.p] = +inp.value; changed(); } }));
+  el.querySelectorAll('[data-s]').forEach(inp => inp.addEventListener('change', () => { if (validField(inp)) { D.sim[inp.dataset.s] = +inp.value; changed(); } }));
+}
+
+// ============================================================ bottom tabs
+const TABS = [['checks','Checks'],['links','Links'],['flows','Traffic'],['dies','Dies & cost'],['sweep','Sweep'],['run','Run'],['vp','Harness VP']];
+function renderTabs(){
+  const n = EVAL ? EVAL.summary.errors + EVAL.summary.warnings : 0;
+  const focusedTab = document.activeElement?.closest?.('#tabs') ? TAB : null;
+  $('#tabs').innerHTML = TABS.map(([k, l]) => `<button type="button" role="tab" id="tab-${k}" aria-controls="tabbody" aria-selected="${TAB===k}" tabindex="${TAB===k ? 0 : -1}" data-t="${k}" class="${TAB===k?'active':''}">${l}${k==='checks' && n ? ` (${n})` : ''}${k==='run' && RUN ? ` (${RUN.state})` : ''}</button>`).join('');
+  const go = k => { TAB = k; history.replaceState(null, '', '#tab=' + k); renderTabs(); $('#tab-' + k).focus(); };
+  $('#tabs').querySelectorAll('button').forEach(b => {
+    b.onclick = () => go(b.dataset.t);
+    b.onkeydown = e => { const i = TABS.findIndex(([k]) => k === b.dataset.t);
+      const j = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? TABS.length - 1 : null;
+      if (j != null){ e.preventDefault(); go(TABS[(j + TABS.length) % TABS.length][0]); } };
+  });
+  if (focusedTab) $('#tab-' + focusedTab)?.focus();
+  const body = $('#tabbody');
+  body.setAttribute('aria-labelledby', 'tab-' + TAB);
+  if (body.contains(document.activeElement) && TAB === 'flows') return;
+  body.innerHTML = ({checks: tabChecks, links: tabLinks, flows: tabFlows, dies: tabDies, sweep: tabSweep, run: tabRun, vp: tabVP}[TAB])();
+  if (TAB === 'flows') bindFlows();
+  if (TAB === 'sweep') bindSweep();
+  body.querySelectorAll('[data-sel]').forEach(b => b.onclick = () => { const [type, id] = b.dataset.sel.split(':'); SEL = {type, id}; render(); });
+  const bc = $('#bCancel'); if (bc) bc.onclick = cancelRun;
+  body.scrollTop = TAB === 'run' ? body.scrollHeight : 0;
+}
+function tabChecks(){
+  if (!EVAL) return '<span class="hint">Evaluating…</span>';
+  if (!EVAL.issues.length) return '<span class="ok">✓ No DRC or connectivity issues.</span>';
+  const go = i => i.ref && (chip(i.ref) || D.links.some(l => l.id === i.ref)) ? ` <button type="button" class="rowbtn" data-sel="${chip(i.ref) ? 'chiplet' : 'link'}:${i.ref}">Select</button>` : '';
+  return `<ul class="objlist">${EVAL.issues.map(i => `<li class="sev-${i.severity}">${i.severity === 'error' ? '⚠ Error' : 'Warning'}: ${esc(i.message)}${go(i)}</li>`).join('')}</ul>`;
+}
+const name = id => esc(chip(id)?.name ?? id);
+function bar(v){ return `<span class="bar" aria-hidden="true"><i style="width:${Math.min(100, v*100)}%;background:${utilColor(v)}"></i></span>`; }
+function tabLinks(){
+  if (!EVAL?.links.length) return '<span class="hint">No links yet. Press L and click two chiplets, or use Add link in a chiplet\'s inspector.</span>';
+  return `<table><thead><tr><th scope="col">Link</th><th scope="col">Gap</th><th scope="col">Channel</th><th scope="col">Lanes</th><th scope="col">BW/dir</th><th scope="col">Load</th><th scope="col">Util</th><th scope="col">Latency</th><th scope="col">Shoreline</th><th scope="col"><span class="mono" translate="no">bridge_delay_ns</span></th><th scope="col" title="Firmware-visible cost per 32-bit access measured on smu-vp">VP per access</th></tr></thead><tbody>
+    ${EVAL.links.map(e => `<tr>
+      <td><button type="button" class="rowbtn" data-sel="link:${e.id}">${name(e.a)} – ${name(e.b)}</button></td><td>${u(e.edge_gap_mm, 'mm')}</td><td class="${e.reach_ok?'':'sev-error'}">${e.reach_ok ? '' : '⚠ '}${u(e.channel_mm, 'mm')}</td>
+      <td>${e.lanes}</td><td>${u(e.bw_gbs_per_dir, 'GB/s')}</td><td>${u(Math.max(e.load_gbs.fwd, e.load_gbs.rev), 'GB/s')}</td>
+      <td>${bar(e.utilization)} ${pct(e.utilization)}</td><td>${u(e.latency_ns, 'ns')}</td><td>${u(e.shoreline_mm, 'mm')}</td><td class="mono" translate="no">${e.aou_bridge_delay_ns}</td><td>${vpLink(e.id) ? u(vpLink(e.id).ns_per_access, 'ns') : '<span class="hint">—</span>'}</td></tr>`).join('')}</tbody></table>
+    ${vpFresh() ? '' : '<p class="hint">VP ns/access appears after a run with “Harness VP” ticked (and clears when the design changes).</p>'}`;
+}
+function tabFlows(){
+  const opts = sel => D.chiplets.map(c => `<option value="${c.id}" ${c.id===sel?'selected':''}>${esc(c.name)}</option>`).join('');
+  const ev = i => EVAL?.flows[i];
+  if (!D.flows.length) return `<p class="hint">No traffic yet. Add a flow to see paths, link load and latency.</p>
+    <p><button type="button" class="btn" id="addFlow" ${D.chiplets.length < 2 ? 'disabled' : ''}>Add flow</button>${D.chiplets.length < 2 ? ' <span class="hint">Add at least two chiplets first.</span>' : ''}</p>`;
+  return `<table><thead><tr><th scope="col">Source</th><th scope="col">Destination</th><th scope="col">GB/s</th><th scope="col">Path</th><th scope="col">Zero-load</th><th scope="col">Loaded</th><th scope="col" title="Sum of VP-measured per-access cost over the path's links (each link simulated separately)">VP estimate</th><th scope="col"><span class="sr-only">Remove</span></th></tr></thead><tbody>
+    ${D.flows.map((f, i) => { const e = ev(i); return `<tr>
+      <td><select name="flow-${i}-src" aria-label="Source of flow ${i + 1}" data-f="${i}" data-k="src">${opts(f.src)}</select></td>
+      <td><select name="flow-${i}-dst" aria-label="Destination of flow ${i + 1}" data-f="${i}" data-k="dst">${opts(f.dst)}</select></td>
+      <td><input name="flow-${i}-gbs" aria-label="Bandwidth of flow ${i + 1} in GB/s" data-f="${i}" data-k="gbs" type="number" inputmode="decimal" min="0" autocomplete="off" value="${f.gbs}" step="1"></td>
+      <td>${e ? (e.routable ? e.path.map(name).join(' → ') : '<span class="sev-error">⚠ Unroutable: link these chiplets</span>') : ''}</td>
+      <td>${e?.routable ? u(e.zero_load_latency_ns, 'ns') : ''}</td>
+      <td class="${e?.saturated ? 'sev-error' : ''}">${e?.routable ? u(e.loaded_latency_ns, 'ns') + (e.saturated ? ' ⚠ saturated' : '') : ''}</td>
+      <td>${e?.routable && e.link_ids.every(vpLink) ? u(+(e.link_ids.reduce((a, id) => a + vpLink(id).ns_per_access, 0)).toFixed(1), 'ns') : ''}</td>
+      <td><button type="button" class="btn" data-del="${i}" aria-label="Remove flow ${i + 1}"><span aria-hidden="true">✕</span></button></td></tr>`; }).join('')}</tbody></table>
+    <p><button type="button" class="btn" id="addFlow" ${D.chiplets.length < 2 ? 'disabled' : ''}>Add flow</button>
+    <span class="hint">Each flow is routed on the lowest-latency path; link load inflates latency (M/M/1).</span></p>`;
+}
+function bindFlows(){
+  const b = $('#tabbody');
+  b.querySelectorAll('[data-f]').forEach(inp => inp.addEventListener('change', () => {
+    const f = D.flows[+inp.dataset.f]; f[inp.dataset.k] = inp.type === 'number' ? +inp.value : inp.value; inp.blur(); changed();
+  }));
+  b.querySelectorAll('[data-del]').forEach(x => x.onclick = () => { D.flows.splice(+x.dataset.del, 1); changed(); toast('Removed the flow.', {label: 'Undo', fn: undo}); });
+  const a = $('#addFlow'); if (a) a.onclick = () => { D.flows.push({src: D.chiplets[0].id, dst: D.chiplets[1].id, gbs: 8}); changed(); };
+}
+function tabDies(){
+  if (!EVAL) return '';
+  const s = EVAL.summary;
+  if (!EVAL.dies.length) return '<p class="hint">No chiplets yet. Add one from the palette.</p>';
+  return `<table><thead><tr><th scope="col">Chiplet</th><th scope="col">Area</th><th scope="col">Yield</th><th scope="col">Die cost</th></tr></thead><tbody>
+    ${EVAL.dies.map(d => `<tr><td>${esc(d.name)}</td><td>${u(d.area_mm2, 'mm²')}</td><td>${(d.yield*100).toFixed(1)}%</td><td>${money(d.cost_usd)}</td></tr>`).join('')}
+    <tr><th scope="row">Silicon total</th><td>${u(s.total_die_area_mm2, 'mm²')}</td><td></td><td><b>${money(s.silicon_cost_usd)}</b></td></tr>
+    <tr><th scope="row">Package (lump sum)</th><td>${u(s.package_area_mm2, 'mm²')}</td><td></td><td>${money(s.package_cost_usd)}</td></tr></tbody></table>
+    <p class="hint">Murphy yield model, gross dies per wafer with edge loss. Power density ${u(s.power_density_w_per_mm2, 'W/mm²')} over the substrate.</p>`;
+}
+function tabRun(){
+  if (!RUN) return '<span class="hint">Press Run to evaluate the design on the server. Tick “Harness VP” to also run smu-vp for each chiplet and link.</span>';
+  return `<div class="hint">Run <span class="mono" translate="no">${RUN.id}</span>: ${RUN.state === 'running' ? 'running…' : RUN.state} ${RUN.state==='running'?`<button type="button" class="btn" id="bCancel">Cancel run</button>`:''}</div>
+    <pre translate="no">${esc(RUN.logs.join('\n'))}</pre>`;
+}
+function resCls(r){ return /^PASS/.test(r) ? 'ok' : /FAIL/.test(r) ? 'sev-error' : 'sev-warning'; }
+function tabVP(){
+  const vp = RUN?.result?.harness_vp;
+  const pre = `<p class="hint">Per chiplet: its scenario runs on <span class="mono" translate="no">smu-vp</span> (SMC RV64 + SEP RV32 firmware) with
+    <span class="mono" translate="no">dut.aou.bridge_delay_ns</span> = the worst latency of its links. Per link: the GUI's latency probe times 32 AoU
+    accesses with CLINT MTIME. Today the far die is the AoU stub peer inside <span class="mono" translate="no">smc_platform</span>; true N-die co-simulation
+    needs a multi-die top in tt-oca-harness-model.</p>`;
+  if (!vp) return pre + '<span class="hint">No Harness VP run yet — tick “Harness VP” and press ▶ Run.</span>';
+  if (vp.skipped) return pre + '<span class="sev-warning">⚠ Skipped: fix the DRC errors in the Checks tab, then run again.</span>';
+  const stale = vpFresh() || vp.available === false ? '' : '<p class="sev-warning">The design changed since this run; results below are for the earlier design.</p>';
+  const own = CAT.harness_vp.own_ini_scenarios || [];
+  const chips = `<h3>Chiplet scenarios</h3><table><thead><tr><th scope="col">Chiplet</th><th scope="col">Scenario</th><th scope="col" translate="no">bridge_delay_ns</th><th scope="col">Result</th><th scope="col">Notes</th></tr></thead>
+    ${vp.jobs.map(j => `<tr><td>${esc(j.name)}</td><td>${esc(j.scenario)}</td><td>${j.bridge_delay_ns}</td>
+      <td class="${resCls(j.result)}">${esc(j.result)}</td>
+      <td class="hint">${j.ini_overridden ? 'test ships its own smc.ini (GUI delay not applied)' : j.uses_aou ? 'crosses AoU' : 'on-die only'}</td></tr>`).join('')}</table>`;
+  const b = vp.baseline;
+  const links = (vp.links || []).length ? `<h3>Link latency probes</h3>
+    ${b ? `<p class="hint">On-die baseline (bridge_delay 0): <b>${b.ns_per_access} ns/access</b>. AoU part = measured − baseline;
+      “AoU crossings/access” = AoU part ÷ injected delay (the AoU model's annotated delay as seen by a 32-bit access).</p>` : ''}
+    <table><thead><tr><th scope="col">Link</th><th scope="col">Analytic latency</th><th scope="col">Injected</th><th scope="col">VP per access</th><th scope="col">AoU part</th><th scope="col">AoU crossings per access</th><th scope="col">Result</th></tr></thead>
+    ${vp.links.map(j => { const p = j.probe || {}; const e = linkEval(j.link);
+      return `<tr><td>${esc(j.name)}</td><td>${e ? u(e.latency_ns, 'ns') : '—'}</td><td>${u(j.bridge_delay_ns, 'ns')}</td>
+        <td><b>${u(p.ns_per_access, 'ns')}</b></td><td>${u(p.aou_ns_per_access, 'ns')}</td><td>${num(p.aou_crossings_per_access)}</td>
+        <td class="${resCls(j.result)}">${esc(j.result)}</td></tr>`; }).join('')}</table>` : '';
+  return pre + stale + (vp.available === false ? '<p class="sev-warning">⚠ smu-vp is not built on the server. Build it (see the Run log for the command), or set OCA_SMU_VP. The inis and run.sh files were still written.</p>' : '') + chips + links;
+}
+
+
+// ============================================================ sweep (analytic design-space exploration)
+let SWEEP = {param: 'links.data_rate_gtps', metric: 'worst_loaded_ns', res: null, params: null, busy: false};
+const METRICS = {
+  worst_loaded_ns: ['Worst flow latency, loaded (ns)', v => u(v == null ? v : +v.toFixed(1), 'ns')],
+  worst_zero_load_ns: ['Worst flow latency, zero-load (ns)', v => u(v == null ? v : +v.toFixed(1), 'ns')],
+  max_link_util: ['Max link utilization (%)', v => pct(v), v => v * 100],
+  d2d_power_w: ['D2D power (W)', v => u(v, 'W')],
+  total_cost_usd: ['Silicon + package cost ($)', v => money(v)],
+  max_channel_mm: ['Longest UCIe channel (mm)', v => u(v, 'mm')],
+};
+function tabSweep(){
+  const P = SWEEP.params || {};
+  const opts = Object.entries(P).map(([k, v]) => `<option value="${k}" ${k===SWEEP.param?'selected':''}>${esc(v.label)}</option>`).join('');
+  const mopts = Object.entries(METRICS).map(([k, v]) => `<option value="${k}" ${k===SWEEP.metric?'selected':''}>${esc(v[0])}</option>`).join('');
+  const r = SWEEP.res;
+  let out = `<div class="sweepctl"><label class="hint" for="swParam">Vary</label><select id="swParam" name="sweep-param">${opts}</select>
+    <label class="hint" for="swMetric">Plot</label><select id="swMetric" name="sweep-metric">${mopts}</select>
+    <button type="button" class="btn" id="swRun" ${SWEEP.busy ? 'disabled aria-busy="true"' : ''}>${SWEEP.busy ? 'Running…' : 'Run sweep'}</button>
+    <span class="hint">Analytic model, current design; one parameter at a time.</span></div>`;
+  if (!r) return out + '<span class="hint">Pick a parameter and press Run sweep.</span>';
+  if (r.forJSON !== (CUR || JSON.stringify(D))) out += '<p class="sev-warning">⚠ The design changed since this sweep. Press Run sweep to refresh it.</p>';
+  out += `<div class="chartwrap"><svg id="swChart" width="100%" height="190" role="img" aria-label="${esc(METRICS[SWEEP.metric][0])} against ${esc(r.label)}. The table below lists the same values."></svg><div class="tip" id="swTip" aria-hidden="true"></div></div>`;
+  const f = k => METRICS[k][1];
+  out += `<table><thead><tr><th scope="col">${esc(r.label)}</th><th scope="col">DRC</th><th scope="col">Worst latency, loaded</th><th scope="col">Zero-load</th><th scope="col">Max util</th><th scope="col">D2D power</th><th scope="col">Cost</th><th scope="col">Longest channel</th></tr></thead>
+    ${r.rows.map(x => `<tr><td>${esc(x.label)}</td>
+      <td class="${x.errors ? 'sev-error' : x.warnings ? 'sev-warning' : 'ok'}" title="${esc(x.first_error || '')}">${x.errors ? `⚠ ${x.errors} err` : x.warnings ? `${x.warnings} warn` : '✓ clean'}</td>
+      <td>${f('worst_loaded_ns')(x.worst_loaded_ns) ?? ''}</td><td>${f('worst_zero_load_ns')(x.worst_zero_load_ns) ?? ''}</td>
+      <td>${f('max_link_util')(x.max_link_util)}</td><td>${f('d2d_power_w')(x.d2d_power_w)}</td><td>${f('total_cost_usd')(x.total_cost_usd)}</td>
+      <td>${f('max_channel_mm')(x.max_channel_mm) ?? ''}</td></tr>`).join('')}</table>`;
+  return out;
+}
+function drawSweep(){
+  const svgEl = document.getElementById('swChart'); if (!svgEl || !SWEEP.res) return;
+  const rows = SWEEP.res.rows, m = METRICS[SWEEP.metric];
+  const val = x => { const v = x[SWEEP.metric]; return v == null ? null : (m[2] ? m[2](v) : v); };
+  const W = svgEl.clientWidth || 600, H = 190, L = 56, R = 16, T = 14, B = 34;
+  const ys = rows.map(val).filter(v => v != null);
+  const bars = SWEEP.param === 'package.tech';
+  let ymin = 0, ymax = Math.max(1e-9, ...ys);
+  if (!bars){ const lo = Math.min(...ys), span = Math.max(ymax - lo, Math.abs(ymax) * 0.02, 1e-6);
+    ymin = Math.max(0, lo - span * 0.25); ymax = ymax + span * 0.25; } else ymax *= 1.12;
+  const n = rows.length, bw = (W - L - R) / n;
+  const X = i => L + bw * (i + 0.5), Y = v => T + (H - T - B) * (1 - (v - ymin) / (ymax - ymin));
+  let g = '';
+  for (let k = 0; k <= 4; k++){ const v = ymin + (ymax - ymin) * k / 4, y = Y(v);
+    g += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="var(--line)" stroke-width="1"/>
+          <text x="${L - 6}" y="${y + 4}" text-anchor="end" font-size="11" fill="var(--muted)">${+v.toPrecision(3)}</text>`; }
+  rows.forEach((x, i) => g += `<text x="${X(i)}" y="${H - B + 16}" text-anchor="middle" font-size="11" fill="var(--muted)">${esc(bars ? x.label.split(' (')[0] : x.label)}</text>`);
+  g += `<text x="${L}" y="${H - 4}" font-size="11" fill="var(--muted)">${esc(SWEEP.res.label)}</text>`;
+  if (bars){
+    rows.forEach((x, i) => { const v = val(x); if (v == null) return; const bwid = Math.min(48, bw * 0.5), y = Y(v);
+      g += `<path d="M${X(i) - bwid/2},${Y(ymin)} V${y + 4} Q${X(i) - bwid/2},${y} ${X(i) - bwid/2 + 4},${y} H${X(i) + bwid/2 - 4} Q${X(i) + bwid/2},${y} ${X(i) + bwid/2},${y + 4} V${Y(ymin)} Z"
+              fill="var(--accent)" fill-opacity="${x.errors ? 0.35 : 1}"/>`; });
+  } else {
+    const pts = rows.map((x, i) => [X(i), val(x)]).filter(p => p[1] != null);
+    g += `<path d="M${pts.map(p => `${p[0]},${Y(p[1])}`).join('L')}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>`;
+    rows.forEach((x, i) => { const v = val(x); if (v == null) return;
+      g += `<circle cx="${X(i)}" cy="${Y(v)}" r="4.5" fill="${x.errors ? 'var(--panel)' : 'var(--accent)'}" stroke="var(--accent)" stroke-width="2"/>`; });
+  }
+  rows.forEach((x, i) => g += `<rect class="swhit" data-i="${i}" x="${X(i) - bw/2}" y="${T}" width="${bw}" height="${H - T - B}" fill="transparent"/>`);
+  svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svgEl.innerHTML = g;
+  const tip = document.getElementById('swTip');
+  svgEl.querySelectorAll('.swhit').forEach(h => {
+    h.addEventListener('mouseenter', () => { const x = rows[+h.dataset.i];
+      tip.innerHTML = `<b>${esc(x.label)}</b><br>${esc(m[0])}: ${m[1](x[SWEEP.metric]) ?? '—'}<br>${x.errors ? `<span class="sev-error">⚠ ${esc(x.first_error)}</span>` : '<span class="ok">✓ DRC clean</span>'}`;
+      tip.style.display = 'block'; tip.style.left = Math.min(X(+h.dataset.i) + 8, W - 260) + 'px'; tip.style.top = '6px'; });
+    h.addEventListener('mouseleave', () => tip.style.display = 'none');
+  });
+}
+async function bindSweep(){
+  if (!SWEEP.params){ SWEEP.params = await (await fetch(API + '/api/sweep/params')).json(); renderTabs(); return; }
+  $('#swParam').onchange = e => { SWEEP.param = e.target.value; SWEEP.res = null; renderTabs(); };
+  $('#swMetric').onchange = e => { SWEEP.metric = e.target.value; renderTabs(); };
+  $('#swRun').onclick = async () => {
+    SWEEP.busy = true; renderTabs();
+    const r = await fetch(API + '/api/sweep', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({design: D, param: SWEEP.param})});
+    SWEEP.busy = false; SWEEP.res = r.ok ? await r.json() : null; if (SWEEP.res) SWEEP.res.forJSON = JSON.stringify(D);
+    if (!r.ok) toast('The sweep failed on the server. Check that the server is running, then try again.');
+    else announce(`Sweep finished: ${SWEEP.res.rows.length} points.`);
+    renderTabs(); $('#swRun')?.focus();
+  };
+  drawSweep();
+}
+
+// ============================================================ run
+function setRunBusy(b){ const btn = $('#bRun'); btn.disabled = b; btn.setAttribute('aria-busy', String(b)); btn.innerHTML = b ? 'Running…' : '<span aria-hidden="true">▶</span> Run'; }
+async function run(){
+  const engines = ['analytic', ...($('#eVP').checked ? ['harness-vp'] : [])];
+  setRunBusy(true);
+  let r;
+  try { r = await fetch(API + '/api/runs', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({design: D, engines})}); }
+  catch { setRunBusy(false); toast('Could not reach the server. Start it with ./start.sh, then press Run again.'); return; }
+  if (!r.ok){ setRunBusy(false); toast(`The server rejected the run (${r.status}). Check the design for missing values, then try again.`); return; }
+  const j = await r.json();
+  RUN = {id: j.id, state: j.state, logs: [], result: {}, designJSON: JSON.stringify(D)};
+  TAB = 'run'; history.replaceState(null, '', '#tab=run'); renderTabs(); announce('Run started.');
+  const es = new EventSource(`${API}/api/runs/${j.id}/events`);
+  es.addEventListener('log', e => { RUN.logs.push(JSON.parse(e.data)); if (TAB === 'run') renderTabs(); });
+  es.addEventListener('end', e => { const d = JSON.parse(e.data); RUN.state = d.state; RUN.result = d.result; es.close(); setRunBusy(false); renderCanvas();
+    const vp = RUN.result.harness_vp, fails = vp ? [...(vp.jobs || []), ...(vp.links || [])].filter(j => /FAIL/.test(j.result)).length : 0;
+    announce(`Run ${d.state}.` + (vp ? ` Harness VP: ${fails ? fails + ' failed' : 'all passed'}.` : ''));
+    if (vp) { TAB = 'vp'; history.replaceState(null, '', '#tab=vp'); } renderTabs(); });
+  es.onerror = () => { es.close(); if (RUN.state === 'running') { setRunBusy(false); toast('Lost the connection to the run. Reload to see its result.'); } };
+}
+async function cancelRun(){ if (RUN) { await fetch(`${API}/api/runs/${RUN.id}/cancel`, {method:'POST'}); announce('Cancelling the run…'); } }
+window.addEventListener('beforeunload', e => { if (RUN?.state === 'running') { e.preventDefault(); e.returnValue = ''; } });
+
+// ============================================================ header wiring
+$('#dname').onchange = e => { const v = e.target.value.trim(); if (!v){ e.target.value = D.name; toast('Enter a design name.'); return; } D.name = v; changed(); };
+$('#pkgTech').onchange = e => { D.package.tech = e.target.value; changed(); };
+function headerNum(el, set){ el.onchange = () => { const v = +el.value; const bad = !(v >= 1);
+  el.setAttribute('aria-invalid', String(bad)); if (bad){ toast('Enter a substrate size of at least 1 mm.'); el.focus(); return; } set(v); changed(); }; }
+headerNum($('#pkgW'), v => D.package.w_mm = v);
+headerNum($('#pkgH'), v => D.package.h_mm = v);
+const fileMenu = $('#fileMenu');
+fileMenu.querySelectorAll('.pop button').forEach(b => b.addEventListener('click', () => fileMenu.open = false));
+fileMenu.addEventListener('keydown', e => { if (e.key === 'Escape'){ fileMenu.open = false; fileMenu.querySelector('summary').focus(); e.stopPropagation(); } });
+document.addEventListener('pointerdown', e => { if (fileMenu.open && !fileMenu.contains(e.target)) fileMenu.open = false; });
+$('#zIn').onclick = () => zoomBy(1.2);
+$('#zOut').onclick = () => zoomBy(1/1.2);
+$('#zFit').onclick = () => fitView();
+$('#tLink').onclick = toggleLink;
+$('#bUndo').onclick = undo;
+$('#bRedo').onclick = redo;
+$('#bExample').onclick = () => { load(exampleDesign()); fitView(); toast('Loaded the example design.', {label: 'Undo', fn: undo}); };
+$('#bRun').onclick = run;
+const curTheme = () => document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+function syncTheme(){
+  const dark = curTheme() === 'dark';
+  $('#bTheme').setAttribute('aria-pressed', String(dark));
+  document.querySelectorAll('meta[name=theme-color]').forEach(m => { m.removeAttribute('media'); m.content = dark ? '#1b1e23' : '#ffffff'; });
+}
+$('#bTheme').onclick = () => {
+  const nxt = curTheme() === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = nxt;
+  try { localStorage.setItem('oca-theme', nxt); } catch {}
+  syncTheme();
+};
+function download(name, blob){ const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
+$('#bSave').onclick = () => download(`${D.name}.json`, new Blob([JSON.stringify(D, null, 2)], {type:'application/json'}));
+$('#bImport').onclick = () => $('#fImport').click();
+$('#fImport').onchange = async e => { const f = e.target.files[0]; if (!f) return;
+  try { const d = JSON.parse(await f.text()); if (!d?.package || !Array.isArray(d.chiplets)) throw new Error('missing package or chiplets');
+    load({links: [], flows: [], process: {}, sim: {}, ...d}); fitView(); toast(`Imported ${f.name}.`, {label: 'Undo', fn: undo}); }
+  catch (err) { toast(`Could not import ${f.name}: ${err.message}. Choose a design saved with Save JSON.`); }
+  e.target.value = ''; };
+$('#bBundle').onclick = async () => {
+  const r = await fetch(API + '/api/export', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(D)});
+  if (r.ok) { download(`${D.name}-oca.zip`, await r.blob()); toast('Exported the bundle.'); }
+  else toast(`The export failed (${r.status}). Fix the design's DRC errors, then try again.`);
+};
+
+boot();
+</script>
+</body>
+</html>

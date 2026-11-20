@@ -1,0 +1,278 @@
+From d709dc63aa617833d27a58fb06612df38d1c0665 Mon Sep 17 00:00:00 2001
+From: kadomoto <kadomoto@mtl.t.u-tokyo.ac.jp>
+Date: Fri, 20 Nov 2026 16:40:04 +0900
+Subject: [PATCH] Accept [double] sections in smu-vp INI files
+
+smu-vp's apply_ini_value() only handled [bool], [int], [uint] and
+[string]; any other section returned without setting a preset. smc-vp's
+parser already accepts [double]/[float], so an smc-vp ini that tunes a
+double CCI parameter (for example dut.aou.bridge_delay_ns or
+dut.clint.tick_period_ns) loaded without error in smu-vp but had no
+effect. The smc_smu_vp.ini header promises identical semantics to the
+smc-vp ini.
+
+Add the [double]/[float] branch, matching smc-vp.
+
+Add smu-aou-delay-test as a regression: its generated smc.ini sets
+dut.aou.bridge_delay_ns = 10 us and dut.clint.tick_period_ns = 100 ns,
+and the SMC firmware requires MTIME to advance by at least 8 hops x
+bridge_delay_ns across 4 write+readback beats through the AOU. Before
+this change the test fails (MTIME frozen, delay 0); after it, it passes
+(~15 us/hop measured). All 9 sw/smu-vp-tests pass.
+---
+ sw/smu-vp-tests/.gitignore                    |   3 +
+ sw/smu-vp-tests/README.md                     |   1 +
+ sw/smu-vp-tests/smu-aou-delay-test/Makefile   |  40 +++++++
+ sw/smu-vp-tests/smu-aou-delay-test/sep.mk     |   8 ++
+ sw/smu-vp-tests/smu-aou-delay-test/sep_main.c |  14 +++
+ sw/smu-vp-tests/smu-aou-delay-test/smc.mk     |   8 ++
+ sw/smu-vp-tests/smu-aou-delay-test/smc_main.c | 102 ++++++++++++++++++
+ vp/platform/smu/main.cpp                      |   2 +
+ 8 files changed, 178 insertions(+)
+ create mode 100644 sw/smu-vp-tests/smu-aou-delay-test/Makefile
+ create mode 100644 sw/smu-vp-tests/smu-aou-delay-test/sep.mk
+ create mode 100644 sw/smu-vp-tests/smu-aou-delay-test/sep_main.c
+ create mode 100644 sw/smu-vp-tests/smu-aou-delay-test/smc.mk
+ create mode 100644 sw/smu-vp-tests/smu-aou-delay-test/smc_main.c
+
+diff --git a/sw/smu-vp-tests/.gitignore b/sw/smu-vp-tests/.gitignore
+index 52e5d22..4d9bfa7 100644
+--- a/sw/smu-vp-tests/.gitignore
++++ b/sw/smu-vp-tests/.gitignore
+@@ -14,3 +14,6 @@ smu_*_sep
+ smu-rom-boot-test/smu_rom_boot.elf
+ smu-rom-boot-test/smu_rom_boot.bin
+ smu-rom-boot-test/smc.ini
++
++# AOU delay test: the SMC ini generated with its [double] delay/tick overrides.
++smu-aou-delay-test/smc.ini
+diff --git a/sw/smu-vp-tests/README.md b/sw/smu-vp-tests/README.md
+index 0095417..4ed7d08 100644
+--- a/sw/smu-vp-tests/README.md
++++ b/sw/smu-vp-tests/README.md
+@@ -53,6 +53,7 @@ UART0, SEP on the virtconsole) and neither prints FAIL.
+ | `smu-xbar-test` | `fw/smc/tests/smc_sep_xbar` + `smu_bidirect` / `fw/sep/tests/sep_smu_bidirect` | Same two AXI paths with the hardware handshake tokens (`0x13579BDF` / `0xC001CAFE` / `0x5E9ACCE5` / `0xD0E0F00D`). CLA / fuse-sense / filter programming omitted. |
+ | `smu-traffic-test` | DV `smc_cpu_traffic_sep_axi_test` | 50 SMC→SEP write+readback beats through `output_axi` → xbar → SEP SRAM. |
+ | `smu-aou-ext-test` | `fw/smc/tests/smu_sep_ext_axi` | Activate AOU, then both CPUs write/readback a catch-all address through `xbar.ext_out` → local AOU → peer → `stub_sysmem`. SEP also reads AOU `ip_version` through the dedicated SMC window (`0x4000_C000`) and programs the outbound filter before its `smn_outbound` beat. |
++| `smu-aou-delay-test` | (VP original) | The test's generated `smc.ini` sets `dut.aou.bridge_delay_ns` (10 µs) and `dut.clint.tick_period_ns` (100 ns) in a `[double]` section. The SMC activates AOU, times 4 write+readback beats through `xbar.ext_out` → AOU → peer with MTIME (spinning past a `quantum_insts` batch before each read and calibrating the spin out), and requires at least 8 × `bridge_delay_ns`. Guards smu-vp's INI parser honouring `[double]`. |
+ | `smu-mailbox-test` | SEP mailbox → SMC PLIC | SEP pushes an inbound mailbox beat; SMC checks PLIC pending, payload `READ_DATA`, and IRQS ack. |
+ | `smu-lifecycle-test` | RTL `smu.sv` SEP `lc_state_o` → SMC `lc_state_i` | The SEP compares its eFuse `LC_STATE` with the SMC's `CHIP_CONFIG.LC_STATE`, read through its SMC window: both `0xF0` (TEST_DEV) from the default fuse image, then both `0xE1` after the SEP moves the part to PROD. The SMC side reads `0xF0` itself. |
+ | `smu-rom-boot-test` | (VP original) | ROM-only SMC boot: `smu-vp` gets `none` as the SMC ELF and this test's generated `smc.ini`, which loads `sw/smc-vp-tests/smc-rom-boot-test/rom.S` as the boot ROM. The ROM prints the SMC pass line on UART0 and leaves a token in SMC SRAM that the SEP reads through its SMC window. The runner uses a test's own `smc.ini` when it has one, and passes `none` when the test builds no SMC ELF. |
+diff --git a/sw/smu-vp-tests/smu-aou-delay-test/Makefile b/sw/smu-vp-tests/smu-aou-delay-test/Makefile
+new file mode 100644
+index 0000000..5cf7c73
+--- /dev/null
++++ b/sw/smu-vp-tests/smu-aou-delay-test/Makefile
+@@ -0,0 +1,40 @@
++# SPDX-License-Identifier: Apache-2.0
++# sw/smu-vp-tests/smu-aou-delay-test/Makefile
++#
++# AOU bridge-delay test: this test's smc.ini sets dut.aou.bridge_delay_ns and
++# dut.clint.tick_period_ns in a [double] section, and the SMC firmware checks
++# that MTIME advances by at least the configured delay per AOU hop.  Guards
++# smu-vp's INI parser accepting [double] (smc-vp already does).  Run on smu-vp
++# via sw/smu-vp-tests/run_smu_vp_tests.sh (or `make sim`).
++
++VP        ?= ../../../vp/build_smc/bin/smu-vp
++BASE_SMC_INI ?= ../../../vp/platform/smu/config/smc_smu_vp.ini
++SEP_INI   ?= ../../../vp/platform/smu/config/sep_smu_config.ini
++SIM_TIME_MS ?= 50
++
++# Keep in sync with BRIDGE_DELAY_NS / MTIME_TICK_NS in smc_main.c.
++BRIDGE_DELAY_NS ?= 10000
++MTIME_TICK_NS   ?= 100
++
++.PHONY: all smc sep sim clean
++
++all: smc sep smc.ini
++
++smc:
++	$(MAKE) -f smc.mk
++
++sep:
++	$(MAKE) -f sep.mk
++
++smc.ini: $(BASE_SMC_INI) Makefile
++	cp $< $@
++	printf '\n[double]\ndut.aou.bridge_delay_ns : %s\ndut.aou_peer.bridge_delay_ns : %s\ndut.clint.tick_period_ns : %s\n' \
++		$(BRIDGE_DELAY_NS) $(BRIDGE_DELAY_NS) $(MTIME_TICK_NS) >> $@
++
++sim: all
++	$(VP) smc.ini smu_aou_delay_smc $(SEP_INI) smu_aou_delay_sep $(SIM_TIME_MS)
++
++clean:
++	$(MAKE) -f smc.mk clean
++	$(MAKE) -f sep.mk clean
++	rm -f smc.ini
+diff --git a/sw/smu-vp-tests/smu-aou-delay-test/sep.mk b/sw/smu-vp-tests/smu-aou-delay-test/sep.mk
+new file mode 100644
+index 0000000..d39dc3e
+--- /dev/null
++++ b/sw/smu-vp-tests/smu-aou-delay-test/sep.mk
+@@ -0,0 +1,8 @@
++# SPDX-License-Identifier: Apache-2.0
++SRCS   = ../../sep-vp-tests/common/start.S sep_main.c ../../sep-vp-tests/common/printf.c
++OBJS   = $(SRCS:.c=.o)
++OBJS  := $(OBJS:.S=.o)
++TARGET = smu_aou_delay_sep
++LDFLAGS += -T ../../sep-vp-tests/common/link.ld
++
++include ../../sep-vp-tests/Makefile.common
+diff --git a/sw/smu-vp-tests/smu-aou-delay-test/sep_main.c b/sw/smu-vp-tests/smu-aou-delay-test/sep_main.c
+new file mode 100644
+index 0000000..707bcef
+--- /dev/null
++++ b/sw/smu-vp-tests/smu-aou-delay-test/sep_main.c
+@@ -0,0 +1,14 @@
++/* SPDX-License-Identifier: Apache-2.0 */
++/* SPDX-FileCopyrightText: 2026 Tenstorrent USA, Inc. */
++/*
++ * SEP half of smu-aou-delay-test.  The check runs on the SMC; the SEP only
++ * has to boot and print its banner so the runner sees both halves.
++ */
++extern int printf(const char *format, ...);
++
++int main(void)
++{
++    printf("\n=== SMU AOU delay test (SEP side) ===\n");
++    printf("PASS: SMU AOU delay test (SEP side)\n");
++    return 0;
++}
+diff --git a/sw/smu-vp-tests/smu-aou-delay-test/smc.mk b/sw/smu-vp-tests/smu-aou-delay-test/smc.mk
+new file mode 100644
+index 0000000..1fe10b0
+--- /dev/null
++++ b/sw/smu-vp-tests/smu-aou-delay-test/smc.mk
+@@ -0,0 +1,8 @@
++# SPDX-License-Identifier: Apache-2.0
++SRCS   = ../../smc-vp-tests/common/start.S smc_main.c ../../smc-vp-tests/common/printf.c
++OBJS   = $(SRCS:.c=.o)
++OBJS  := $(OBJS:.S=.o)
++TARGET = smu_aou_delay_smc
++LDFLAGS += -T ../../smc-vp-tests/common/link.ld
++
++include ../../smc-vp-tests/Makefile.common
+diff --git a/sw/smu-vp-tests/smu-aou-delay-test/smc_main.c b/sw/smu-vp-tests/smu-aou-delay-test/smc_main.c
+new file mode 100644
+index 0000000..c3cdf3b
+--- /dev/null
++++ b/sw/smu-vp-tests/smu-aou-delay-test/smc_main.c
+@@ -0,0 +1,102 @@
++/* SPDX-License-Identifier: Apache-2.0 */
++/* SPDX-FileCopyrightText: 2026 Tenstorrent USA, Inc. */
++/*
++ * SMU AOU bridge-delay test (VP original).
++ *
++ * smc.ini (generated by the Makefile) sets, in a [double] section:
++ *   dut.aou.bridge_delay_ns  = BRIDGE_DELAY_NS   (AXI hop annotated delay)
++ *   dut.clint.tick_period_ns = MTIME_TICK_NS     (smu-vp default 0 = frozen)
++ *
++ * After activating the AOU, the SMC does NBEATS write+readback pairs to a
++ * catch-all address (xbar.ext_out -> local AOU -> peer -> stub_sysmem) and
++ * measures MTIME around them.  Each access crosses the AOU once, so MTIME
++ * must advance by at least 2 * NBEATS * BRIDGE_DELAY_NS.  If smu-vp drops
++ * the [double] section, MTIME stays frozen and the delay is zero: FAIL.
++ *
++ * The cluster steps quantum_insts (default 1000) instructions per kernel
++ * yield and the CLINT reads global time, so annotated delay only shows in
++ * MTIME after the hart syncs.  settle() spins past a batch boundary before
++ * each MTIME read; the spin's own cost is calibrated out.
++ */
++#include "smc_common.h"
++
++extern int printf(const char *fmt, ...);
++
++#define BRIDGE_DELAY_NS         10000u   /* keep in sync with Makefile */
++#define MTIME_TICK_NS           100u     /* keep in sync with Makefile */
++
++#define AOU_INIT                0x08u
++#define AOU_INIT_ACTIVATE_START (1u << 0)
++#define AOU_INIT_STATE_ENABLED  (1u << 2)
++
++#define EXT_ADDR                0xA0002000ULL
++#define NBEATS                  4u
++#define HOPS                    (2u * NBEATS)
++#define PATTERN(i)              (0xDE1A0000u + (i))
++
++#define SETTLE_ITERS            4000u    /* > quantum_insts instructions */
++
++#define REG32(addr)             (*(volatile uint32_t *)(uintptr_t)(addr))
++
++static void settle(void)
++{
++    for (volatile uint32_t i = 0; i < SETTLE_ITERS; ++i) {
++    }
++}
++
++static uint64_t mtime(void)
++{
++    uint32_t hi, lo;
++    do {
++        hi = REG_READ(SMC_CLINT_BASE + CLINT_MTIME_HI);
++        lo = REG_READ(SMC_CLINT_BASE + CLINT_MTIME_LO);
++    } while (hi != REG_READ(SMC_CLINT_BASE + CLINT_MTIME_HI));
++    return ((uint64_t)hi << 32) | lo;
++}
++
++int main(void)
++{
++    printf("\n=== SMU AOU delay test (SMC side) ===\n");
++
++    REG_WRITE(SMC_AOU_BASE + AOU_INIT, AOU_INIT_ACTIVATE_START);
++    const uint32_t init = REG_READ(SMC_AOU_BASE + AOU_INIT);
++    if ((init & AOU_INIT_STATE_ENABLED) == 0) {
++        printf("FAIL: AOU not ENABLED after activate (INIT=0x%x)\n", init);
++        return 1;
++    }
++
++    settle();
++    const uint64_t c0 = mtime();
++    settle();
++    const uint64_t c1 = mtime();
++    const uint64_t spin_ticks = c1 - c0;
++
++    settle();
++    const uint64_t t0 = mtime();
++    for (uint32_t i = 0; i < NBEATS; ++i) {
++        REG32(EXT_ADDR + 4u * i) = PATTERN(i);
++        const uint32_t got = REG32(EXT_ADDR + 4u * i);
++        if (got != PATTERN(i)) {
++            printf("FAIL: beat %u readback 0x%08x want 0x%08x\n", i, got, PATTERN(i));
++            return 1;
++        }
++    }
++    settle();
++    const uint64_t t1 = mtime();
++
++    const uint64_t raw_ticks  = t1 - t0;
++    const uint64_t ticks      = raw_ticks > spin_ticks ? raw_ticks - spin_ticks : 0;
++    const uint64_t elapsed_ns = ticks * MTIME_TICK_NS;
++    const uint64_t min_ns     = (uint64_t)HOPS * BRIDGE_DELAY_NS;
++    printf("AOU: %u hops, MTIME delta %u ticks (spin %u) = %u ns (min %u ns), %u ns/hop\n",
++           HOPS, (uint32_t)raw_ticks, (uint32_t)spin_ticks, (uint32_t)elapsed_ns,
++           (uint32_t)min_ns, (uint32_t)(elapsed_ns / HOPS));
++    if (elapsed_ns < min_ns) {
++        printf("FAIL: AOU bridge_delay_ns not applied (%u ns < %u ns)\n",
++               (uint32_t)elapsed_ns, (uint32_t)min_ns);
++        return 1;
++    }
++
++    printf("PASS: SMU AOU delay test (SMC side)\n");
++    return 0;
++}
+diff --git a/vp/platform/smu/main.cpp b/vp/platform/smu/main.cpp
+index 4a09cf8..dc5ee15 100644
+--- a/vp/platform/smu/main.cpp
++++ b/vp/platform/smu/main.cpp
+@@ -82,6 +82,8 @@ void apply_ini_value(const std::string& key, const std::string& section,
+         val = cci::cci_value(static_cast<int64_t>(std::strtoll(v.c_str(), nullptr, 0)));
+     } else if (section == "uint") {
+         val = cci::cci_value(static_cast<uint64_t>(std::strtoull(v.c_str(), nullptr, 0)));
++    } else if (section == "double" || section == "float") {
++        val = cci::cci_value(std::strtod(v.c_str(), nullptr));
+     } else if (section == "string") {
+         if (v.size() >= 2 && v.front() == '"' && v.back() == '"') v = v.substr(1, v.size() - 2);
+         val = cci::cci_value(v);
+-- 
+2.34.1
+

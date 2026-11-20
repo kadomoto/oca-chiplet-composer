@@ -1,0 +1,18 @@
+# Cloned upstream repositories (tt-oca-harness, tt-oca-harness-model, undine-eda); see README
+upstream/
+
+# Simulation runs and server logs
+runs/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+
+# Probe firmware build outputs
+*.o
+firmware/oca-latency-probe/oca_probe_smc
+firmware/oca-latency-probe/oca_probe_sep
+
+# Private correspondence drafts
+reply-to-*.md
