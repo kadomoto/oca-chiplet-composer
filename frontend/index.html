@@ -1119,7 +1119,7 @@ function tabLogic(){
           <td><button type="button" class="btn" data-rdel="${i}" aria-label="Remove ${esc(r.name)}"><span aria-hidden="true">✕</span></button></td></tr>`).join('')}</tbody></table>
         <p><button type="button" class="btn" id="lgAddReg">Add register</button></p>
         <h3 id="h-params"><label for="lgParams">Model parameters</label></h3>
-        <textarea wrap="off" id="lgParams" name="logic-params" class="code" rows="4" spellcheck="false" placeholder="distance_mm = 30…">${esc(paramsText(rm.params))}</textarea>
+        <textarea wrap="off" id="lgParams" name="logic-params" class="code" rows="4" spellcheck="false" placeholder="name = value…">${esc(paramsText(rm.params))}</textarea>
         <h3><label for="lgScript">Register script</label></h3>
         <p class="hint">One step per line: <span class="mono" translate="no">write REG VALUE|FIELD</span>, <span class="mono" translate="no">read REG</span>, <span class="mono" translate="no">poll REG.FIELD</span>, <span class="mono" translate="no">expect REG[.FIELD] VALUE</span>, <span class="mono" translate="no">wait NS</span>.</p>
         <textarea wrap="off" id="lgScript" name="logic-script" class="code" rows="10" spellcheck="false">${esc(c.logic.script || '')}</textarea>

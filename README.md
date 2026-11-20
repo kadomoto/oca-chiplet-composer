@@ -1,43 +1,26 @@
 # OCA Chiplet Composer
 
-Lay out chiplets on a package in your browser, then check the result with two kinds of models: a fast analytic model that answers as you edit, and the [Open Chiplet Atlas Harness](https://github.com/tenstorrent/tt-oca-harness) virtual platform running real firmware. The composer also generates the Harness setup the firmware boots with: the package address map, the inbound filter entries and the AoU bring-up order. Each chiplet can also carry a model of its own logic, a register map plus Python, which firmware on that chiplet drives over the Harness.
+Lay out chiplets on a package in your browser, and check the design two ways: with fast analytic models that answer as you edit, and on the [Open Chiplet Atlas Harness](https://github.com/tenstorrent/tt-oca-harness) virtual platform running real firmware on every chiplet.
 
-![Demo: dragging a die updates the checks; switching to a silicon interposer shows UCIe-A reach errors; a new die is added and linked; a compute chiplet gets its own logic (register map, Python model skeleton, register script); a Harness VP run simulates each link as two real dies; the Harness config tab shows the generated address map, AoU bring-up order and per-chiplet headers; the chiplet logic tab shows what firmware read from the model; a sweep compares package technologies](docs/demo.gif)
+![Demo: dragging a die updates the checks; switching to a silicon interposer shows UCIe-A reach errors; a new die is added and linked; a compute chiplet gets its own logic; a Harness VP run simulates each link as two real dies; the generated Harness setup and the chiplet logic results are shown; a sweep compares package technologies](docs/demo.gif)
 
 > [!NOTE]
-> This is an independent research prototype built on Tenstorrent's open-source OCA Harness repositories. It is not an official Tenstorrent project. The physical numbers it uses (reach, bump pitch, energy, cost) are illustrative defaults, not vendor data.
+> This is an independent research prototype built on Tenstorrent's open-source OCA Harness repositories, not an official Tenstorrent project. It is an early exploration, and whether this is the right shape for such a tool is still open. The physical numbers it uses (reach, bump pitch, energy, cost) are illustrative defaults, not vendor data.
 
-## Why
+## What it does
 
-Choosing chiplet sizes, a package technology and die-to-die links is a physical decision, but its effects show up in system behaviour: link latency, bandwidth, power and cost, and what firmware actually sees. The composer keeps both in one loop:
-
-1. **Analytic model, on every edit.** Placement rules, UCIe reach, where each PHY sits on the die edge and how much shoreline it takes, link bandwidth and latency, traffic routing and load, die-to-die power, yield and cost.
-2. **Harness VP, on demand.** The same design runs on the virtual platform from [tt-oca-harness-model](https://github.com/tenstorrent/tt-oca-harness-model). Each chiplet runs SMC and SEP firmware. Each UCIe link runs its two chiplets as two real dies whose AXI-over-UCIe (AoU) bridges are connected to each other, with the latency derived from the package, and firmware on one die exchanges messages with the other.
-
-## Features
-
-- Drag-and-drop editor with dies drawn to scale on a package that looks like the real thing: an organic substrate, a silicon interposer for 2.5D, or embedded bridges under each link
-- UCIe PHYs placed on the facing die edges, and links routed between them, shown as an X-ray view through the dies
-- Live design rule checks: substrate bounds, die spacing, UCIe reach, PHY shoreline per die edge, UCIe module count, and dies that don't face each other
-- Traffic flows routed on the lowest-latency path, with per-link utilisation and loaded latency
-- Sweeps over package technology, data rate, modules per link, layout spread or defect density
-- Harness VP runs: a firmware scenario per chiplet, and a two-die co-simulation per link that measures the round trip between the two chiplets' SMCs
-- Generated Harness setup: a package address map (each chiplet's SMC global window), SMC inbound filter entries and the AoU bring-up order per link, as JSON and C headers that the link firmware boots with
-- Chiplet logic: give a chiplet a register map and a Python model of what it does beyond the Harness, then drive it from firmware with a short register script
-- Export of a bundle with the design, the analytic report, the generated setup, and a self-contained `run.sh` for every job
-- Undo and redo, full keyboard operation, and light and dark themes
-
-Design decisions for the UI are recorded in [`.impeccable.md`](.impeccable.md).
+- **Package layout.** Place dies to scale on an organic substrate, a silicon interposer or embedded bridges, and connect them with UCIe links. Each link gets a PHY on the facing edge of both dies.
+- **Analytic models, on every edit.** Design rule checks (substrate bounds, die spacing, UCIe reach, PHY shoreline, module counts), link bandwidth and latency, traffic routing and load, die-to-die power, yield and cost, and one-parameter sweeps.
+- **Harness virtual platform, on demand.** Each chiplet runs SMC and SEP firmware. Each link runs its two chiplets as two dies whose AXI-over-UCIe (AoU) bridges are connected, with the link latency derived from the package, and times round trips between the two SMCs.
+- **Generated Harness setup.** The address map, SMC inbound filter entries and AoU bring-up order that firmware needs before two chiplets can talk, derived from the design and used by the link firmware.
+- **Chiplet logic.** Give a chiplet a register map and a Python model of what it does beyond the Harness, and drive it from that chiplet's firmware with a short register script.
+- **Export.** A bundle with the design, the reports, the generated setup and a self-contained `run.sh` for every simulation job.
 
 ## Getting started
 
-### Prerequisites
+### Quick start (analytic models only)
 
-- Python 3.10 or later
-- A modern browser
-- For the Harness VP only: Linux, and the toolchain listed under [Add the Harness VP](#add-the-harness-vp-optional)
-
-### Quick start (analytic model only)
+You need Python 3.10 or later and a modern browser.
 
 ```bash
 git clone https://github.com/kadomoto/oca-chiplet-composer
@@ -46,18 +29,13 @@ pip install -r backend/requirements.txt
 ./start.sh
 ```
 
-Then open http://127.0.0.1:8765. Choose **File → Load example design** to start from a five-chiplet package.
+Open http://127.0.0.1:8765. The example design (five chiplets on an organic package) loads on first start; **File → Load example design** brings it back.
 
-Everything except the **Harness VP** checkbox works without further setup. The sidebar shows `smu-vp: Not built` until you complete the next section.
+Everything except the **Harness VP** checkbox works now. The sidebar shows `smu-vp: Not built` until you add the virtual platform.
 
-### Add the Harness VP (optional)
+### Add the Harness virtual platform (optional, Linux)
 
-The composer drives `smu-vp`, the SMC + SEP virtual platform in tt-oca-harness-model.
-
-1. **Get the model with the composer's two changes.** Both are on the `feat/mdie-vp` branch of [kadomoto/tt-oca-harness-model](https://github.com/kadomoto/tt-oca-harness-model/tree/feat/mdie-vp):
-
-   - the `[double]` INI fix ([tenstorrent/tt-oca-harness-model#284](https://github.com/tenstorrent/tt-oca-harness-model/pull/284)): without it, smu-vp ignores the injected link delay;
-   - `mdie-vp`, the two-die platform with the dies' AoUs connected to each other.
+1. **Get the model with the composer's changes.** They are on the `feat/mdie-vp` branch of [kadomoto/tt-oca-harness-model](https://github.com/kadomoto/tt-oca-harness-model/tree/feat/mdie-vp): the `[double]` INI fix sent upstream as [tenstorrent/tt-oca-harness-model#284](https://github.com/tenstorrent/tt-oca-harness-model/pull/284), and `mdie-vp`, a two-die platform with the dies' AoUs connected and a window for chiplet logic.
 
    ```bash
    mkdir -p upstream && cd upstream
@@ -68,9 +46,7 @@ The composer drives `smu-vp`, the SMC + SEP virtual platform in tt-oca-harness-m
    git submodule update --init --recursive
    ```
 
-   On a checkout without `mdie-vp`, the composer still works and runs each link as a single-die latency probe against the AoU stub peer.
-
-2. **Install the toolchain** that tt-oca-harness-model's CI uses:
+2. **Install the toolchain** that tt-oca-harness-model's CI uses. The model's [README](https://github.com/tenstorrent/tt-oca-harness-model#building-the-sep-vp) has the build steps.
 
    | Dependency | Version | Note |
    |---|---|---|
@@ -78,76 +54,65 @@ The composer drives `smu-vp`, the SMC + SEP virtual platform in tt-oca-harness-m
    | CCI | 1.0.2 | |
    | Boost | 1.74 or later | needs `iostreams` and `program_options` |
    | OpenSSL | 3.x | |
-   | [Whisper](https://github.com/tenstorrent/whisper) | commit `a53d0f3e` | built with `-fPIC` for smu-vp |
-   | RISC-V GCC | xPack 15.2.0-1 | must provide both RV32 (SEP) and RV64 (SMC) multilibs |
+   | [Whisper](https://github.com/tenstorrent/whisper) | commit `a53d0f3e` | built with `-fPIC` |
+   | RISC-V GCC | xPack 15.2.0-1 | needs RV32 (SEP) and RV64 (SMC) multilibs |
 
-   The model's [README](https://github.com/tenstorrent/tt-oca-harness-model#building-the-sep-vp) has the build steps.
-
-3. **Point the composer at it.** Copy the template and fill in your paths:
+3. **Tell the composer where things are,** then build both platforms:
 
    ```bash
-   cp oca-env.example.sh oca-env.sh
-   ```
-
-4. **Build smu-vp:**
-
-   ```bash
+   cp oca-env.example.sh oca-env.sh      # fill in your paths
    source oca-env.sh
    cd upstream/tt-oca-harness-model
    cmake -S vp -B vp/build_smc -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_STANDARD=20 -DSMC_CXX_STANDARD=20
    cmake --build vp/build_smc --target smu-vp mdie-vp -j
    ```
 
-5. **Check it.** Restart `./start.sh`. The sidebar should show `smu-vp: Ready`, `mdie-vp: Ready (two dies)` and nine scenarios. As an extra check, `sw/smu-vp-tests/run_smu_vp_tests.sh` in the model repository should report all tests passing.
+4. **Restart `./start.sh`.** The sidebar should show `smu-vp: Ready` and `mdie-vp: Ready (two dies)`.
 
 > [!TIP]
-> If the model lives elsewhere, set `OCA_MODEL_ROOT` and `OCA_SMU_VP` in `oca-env.sh`. `./start.sh` also reads the file named by `OCA_ENV`.
+> If the model lives elsewhere, set `OCA_MODEL_ROOT` in `oca-env.sh`. `./start.sh` also reads the file named by `OCA_ENV`.
 
 ## Using the composer
 
-![The composer with five chiplets on a UCIe-S organic package, the design summary above the canvas, and Harness VP results below](docs-screenshot.png)
+![The example design after a Harness VP run: five chiplets on an organic package, the design summary above the canvas, and two-die link results below](docs/screenshot.png)
 
-1. **Set up the package.** In the header, choose the package technology and the substrate size in millimetres. The canvas draws each one the way it is built:
+1. **Set up the package.** Pick the technology and the substrate size in the header. Each technology is drawn the way it is built:
 
    | Technology | Typical use | Drawn as |
    |---|---|---|
-   | UCIe-S, organic | 2D multi-die packages, dies a few mm apart | dies on a build-up laminate substrate with pin 1 and fiducials |
-   | UCIe-A, silicon interposer | 2.5D, e.g. compute dies with HBM stacks | dies packed on a silicon interposer that sits on the substrate |
-   | UCIe-A, embedded bridge | 2.5D without a full interposer | a silicon bridge under each link, spanning the gap between the dies |
+   | UCIe-S, organic | 2D packages, dies a few mm apart | dies on a laminate substrate with pin 1 and fiducials |
+   | UCIe-A, silicon interposer | 2.5D, e.g. compute dies with HBM | dies packed on an interposer on the substrate |
+   | UCIe-A, embedded bridge | 2.5D without a full interposer | a silicon bridge under each link |
 
-   ![Two compute dies, two HBM stacks and an IO die on a silicon interposer](docs-interposer.png)
+   ![Two compute dies, two HBM stacks and an IO die on a silicon interposer](docs/interposer.png)
 
-2. **Place chiplets.** Drag a chiplet from the left palette onto the substrate, or press it to add one. Move a chiplet by dragging it or with the arrow keys, and resize it from its bottom-right corner. You can also type its position, size, power and number of UCIe modules in the inspector on the right.
-3. **Connect them.** Press **Link tool** (or <kbd>L</kbd>) and click two chiplets, or use **Add link** in a chiplet's inspector. Each link gets a PHY on the facing edge of both dies. Select a link to set its UCIe modules, data rate and fixed latencies.
-4. **Add traffic.** In the **Traffic** tab, add flows between chiplets with a bandwidth in GB/s. Each flow is routed on the lowest-latency path.
-5. **Read the results.** The design summary above the canvas updates as you edit. The tabs below hold the details:
+2. **Place and connect chiplets.** Drag one from the palette (or press it), move it by dragging or with the arrow keys, and resize it from its corner. Press **Link tool** (<kbd>L</kbd>) and click two chiplets, or use **Add link** in the inspector.
+3. **Add traffic** in the **Traffic** tab: flows between chiplets in GB/s, routed on the lowest-latency path.
+4. **Read the results.** The summary above the canvas updates as you edit; the tabs below hold the details:
 
    | Tab | Shows |
    |---|---|
-   | Checks | Design rule errors and warnings, each with a link to the chiplet or link it concerns |
-   | Links | Gap, channel length, lanes, bandwidth, load, utilisation, latency and shoreline per link |
-   | Traffic | Each flow's path, zero-load and loaded latency, and the Harness VP estimate |
-   | Dies & cost | Area, yield and cost per die, and the package |
-   | Harness config | The generated setup: address map, AoU bring-up per link, inbound filter entries and a header per chiplet |
-   | Chiplet logic | The register map, Python model and register script of the selected chiplet, the generated C header, and the last run's reads, model log and access trace |
+   | Checks | Design rule errors and warnings, each linked to what it concerns |
+   | Links, Traffic, Dies & cost | Per-link budgets, per-flow paths and latency, per-die yield and cost |
+   | Harness config | The generated address map, AoU bring-up per link, filter entries and a header per chiplet |
+   | Chiplet logic | The selected chiplet's register map, Python model and script, and its last run |
    | Sweep | One parameter varied across values, as a chart and a table |
-   | Run | The server log of the last run |
-   | Harness VP | Per-chiplet scenario results and per-link latency probes |
+   | Run, Harness VP | The server log, per-chiplet results and the two-die link results |
 
-6. **Run the Harness VP.** Tick **Harness VP** and press **Run simulation**. Each chiplet runs its scenario, chosen in its inspector. Each link runs its two chiplets together on `mdie-vp`: die 1 comes up and reports to die 0, die 0 checks a remote write and read-back, and the two SMCs exchange 16 ping-pongs over the link. Results come back in about a minute for the example design. They are marked out of date when you change the design afterwards.
-7. **Save or export.** Under **File**, save or import the design as JSON, or export a simulation bundle with an ini and `run.sh` for every job so you can rerun them by hand.
+5. **Run the virtual platform.** Tick **Harness VP** and press **Run simulation**. For the example design this takes about a minute. Results are marked out of date when you change the design.
+6. **Save or export** under **File**: the design as JSON, or a simulation bundle you can rerun by hand.
 
 ### Chiplet logic
 
-A chiplet is more than its Harness. To model what it does, select it and press **Add chiplet logic** in the inspector; it starts from a two-register map. The **Chiplet logic** tab then holds three things:
+![The Chiplet logic tab: a two-register map, the model parameters and a generated Python model skeleton](docs/chiplet-logic.png)
+
+Select a chiplet and press **Add chiplet logic** in the inspector. It starts from a two-register map; the **Chiplet logic** tab holds three parts:
 
 | Part | What you write | What the composer does with it |
 |---|---|---|
-| Register map | Registers with an offset, an access type (`rw`, `ro`, `wo`, `w1c`, `fifo_w`, `fifo_r`), a reset value and named fields, plus model parameters | Gives every register its default behaviour, generates the C header firmware uses and a Python skeleton, and checks names, offsets and fields |
-| Python model | A `Model(RegisterModel)` class that overrides `update()`, `on_write()` or `on_read()` | Runs it behind the chiplet's logic window (`0x7000_0000` on its own die) through `mdie-vp`'s `py_bridge`; every access carries the simulation time |
-| Register script | One step per line: `write REG VALUE\|FIELD`, `read REG`, `poll REG.FIELD`, `expect REG[.FIELD] VALUE`, `wait NS` | Compiles it into a table that `firmware/oca-regscript` runs on the chiplet's SMC |
-
-The window has no interrupt line yet, so scripts poll.
+| Register map | Registers with an offset, an access type (`rw`, `ro`, `wo`, `w1c`, `fifo_w`, `fifo_r`), a reset value and fields, plus model parameters | Gives each register its default behaviour, generates the C header and a Python skeleton, and checks the map |
+| Python model | A `Model(RegisterModel)` class that overrides `update()`, `on_write()` or `on_read()` | Runs it behind the chiplet's logic window (`0x7000_0000` on its own die); every access carries the simulation time |
+| Register script | One step per line: `write REG VALUE\|FIELD`, `read REG`, `poll REG.FIELD`, `expect REG[.FIELD] VALUE`, `wait NS` | Compiles it into a table that the chiplet's SMC firmware runs |
 
 ### Keyboard
 
@@ -155,80 +120,64 @@ The window has no interrupt line yet, so scripts poll.
 |---|---|
 | Arrow keys | Move the selected chiplet by 0.5 mm (2 mm with <kbd>Shift</kbd>) |
 | <kbd>L</kbd> | Turn the link tool on or off |
-| <kbd>Delete</kbd> | Delete the selection (undo from the notification or with <kbd>Ctrl</kbd>+<kbd>Z</kbd>) |
+| <kbd>Delete</kbd> | Delete the selection (undo from the notification) |
 | <kbd>Ctrl</kbd>+<kbd>Z</kbd>, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> | Undo, redo |
-| <kbd>+</kbd> <kbd>−</kbd> <kbd>0</kbd> | Zoom in, zoom out, fit the substrate |
-| <kbd>Esc</kbd> | Leave the link tool or close the File menu |
+| <kbd>+</kbd> <kbd>−</kbd> <kbd>0</kbd> | Zoom in, zoom out, fit |
 
 ## How it works
 
 ```text
 Browser: frontend/index.html (plain JavaScript and SVG)
-  │  POST /api/evaluate   analytic model, on every edit
-  │  POST /api/sweep      analytic model, one parameter across values
-  │  POST /api/runs       analytic + optional Harness VP; progress over SSE
+  │  /api/evaluate  /api/sweep   analytic models
+  │  /api/config                 generated Harness setup
+  │  /api/runs (+ SSE)           analytic + optional virtual platform runs
   ▼
 FastAPI server: backend/app.py
   ├─ engines/analytic.py     rule checks, PHY placement, link budgets, routing, power, cost
-  └─ engines/harness_vp.py   runs smu-vp from tt-oca-harness-model
-        ├─ per chiplet: its sw/smu-vp-tests scenario, with dut.aou.bridge_delay_ns
-        │               set to the worst latency of its links
-        ├─ per link:    mdie-vp runs the link's two chiplets as two dies with their AoUs
-        │               connected; firmware/oca-d2d-pingpong times SMC-to-SMC round trips
-        │               (without mdie-vp: firmware/oca-latency-probe against the AoU stub)
-        └─ once:        the same run at 0 ns, giving the on-die share of the cost
+  ├─ engines/config_gen.py   address map, inbound filters, AoU bring-up order
+  ├─ engines/regmap.py       register maps: checks, C header, Python skeleton, scripts
+  └─ engines/harness_vp.py   runs tt-oca-harness-model
+        ├─ per chiplet: an upstream sw/smu-vp-tests scenario on smu-vp
+        ├─ per link:    mdie-vp with the link's two chiplets as two dies;
+        │               firmware/oca-d2d-pingpong boots with the generated setup
+        └─ per chiplet with logic: mdie-vp with usermodel/runtime.py behind the logic
+                        window; firmware/oca-regscript runs the register script
 ```
 
-The link latency injected into the VP is the AoU fixed latency plus the PHY latency plus the flight time over the routed channel (PHY to PHY, plus escape routing).
-
-On `mdie-vp`, a round trip between the two SMCs takes about **66 ns + 2 × `bridge_delay_ns`**: one crossing each way, plus on-die paths and polling. Link runs use a 5 ns simulation quantum so that the link latency is visible. Even so, delays of a few ns read low (an 8 ns delay adds about 11 ns per round trip instead of 16).
+The injected link latency is the AoU fixed latency plus the PHY latency plus the flight time over the routed channel. On `mdie-vp`, a round trip between two SMCs takes about 66 ns plus twice that latency; link runs use a 5 ns simulation quantum so the latency is visible, and delays of a few ns still read low.
 
 ### Generated Harness setup
 
-Before two chiplets can talk over the AoU, firmware has to get three things right. `backend/engines/config_gen.py` derives them from the design:
-
 | Setup | What the composer generates |
 |---|---|
-| Address map | Each chiplet gets a 32 MiB slot from `0x4000_0000`: its 16 MiB SMC global window, followed by its outbound remap windows. Eight chiplets fit below the SEP aperture at `0x5000_0000`; more is a design rule error. |
-| Inbound filters | The SMC inbound filter blocks everything by default. Each chiplet opens one entry for its mailbox page to the peers it links to. |
-| AoU bring-up | On each link, the chiplet earlier in the design activates the AoU, which also brings the peer up. The other waits for ENABLED before sending anything, so the activator's filter is already open. |
-
-Each link run gets two generated headers (`fw/oca_config_die0.h`, `fw/oca_config_die1.h`), which `firmware/oca-d2d-pingpong` boots with, and `mdie.die<k>.smc_global_base` keys in its ini for `mdie-vp`. The export bundle adds `config/package.json` and a header per chiplet.
-
-### Project structure
-
-```text
-backend/
-  app.py                 HTTP API, run jobs, sweeps, bundle export
-  catalog.py             chiplet templates, package technologies, defaults
-  engines/analytic.py    analytic model
-  engines/config_gen.py  generated Harness setup (address map, filters, AoU roles)
-  engines/regmap.py      register maps: checks, C header, Python skeleton, register scripts
-  engines/harness_vp.py  Harness VP runner
-firmware/oca-d2d-pingpong/    two-die link firmware; reads the generated oca_config_die<N>.h
-firmware/oca-latency-probe/   single-die fallback probe
-firmware/oca-regscript/       runs a generated register script against the chiplet logic
-usermodel/runtime.py          Python runtime behind the chiplet logic window
-frontend/index.html      the whole web UI
-upstream-pr/             the smu-vp INI fix as sent upstream (#284)
-oca-env.example.sh       toolchain paths template for the Harness VP
-start.sh                 starts the server
-```
-
-Run outputs go to `runs/`, which git ignores.
+| Address map | A 32 MiB slot per chiplet from `0x4000_0000`: its 16 MiB SMC global window plus its outbound remap windows. Eight chiplets fit below the SEP aperture at `0x5000_0000`; more is a design rule error. |
+| Inbound filters | The SMC inbound filter blocks everything by default; each chiplet opens one entry for its mailbox page to its link peers. |
+| AoU bring-up | On each link, one chiplet activates the AoU (which also brings the peer up); the other waits for ENABLED before sending. |
 
 ## Limitations
 
-> [!IMPORTANT]
-> `mdie-vp` connects one pair of dies, because each die in the model has a single AoU. Each link is simulated as its own pair; a whole package with several links per die isn't simulated in one run yet. The per-chiplet scenarios still run against the AoU stub peer.
-
-- The AoU model is loosely timed. `bridge_delay_ns` is its only timing parameter; there is no flit, credit or QoS timing.
-- Of the upstream scenarios, only `smu-aou-ext-test` sends traffic over the AoU. The others run on one die, so the injected delay doesn't affect them. The inspector says which kind each scenario is.
-- Physical defaults live in `backend/catalog.py` and are illustrative. Change them to match the technology you are studying.
+- `mdie-vp` connects one pair of dies, because each die in the model has one AoU. Each link is simulated on its own; a whole package with several links per die is not simulated in one run yet.
+- The AoU model is loosely timed: `bridge_delay_ns` is its only timing parameter.
+- The chiplet logic window has no interrupt line yet, so scripts poll. Firmware is the upstream scenarios, the link firmware and register scripts; there is no free-form firmware editor yet.
 - The server has no authentication. Keep it on `127.0.0.1` or a network you trust.
+
+## Repository layout
+
+```text
+backend/            FastAPI server, analytic models, setup generator, VP runner
+frontend/           the web UI (one HTML file)
+firmware/           link firmware, register-script runner, single-die probe
+usermodel/          Python runtime behind the chiplet logic window
+upstream-pr/        the smu-vp INI fix as sent upstream (#284)
+docs/               demo GIF and screenshots
+oca-env.example.sh  toolchain paths for the virtual platform
+start.sh            starts the server
+```
+
+Run outputs go to `runs/`, which git ignores. UI design decisions are recorded in [`.impeccable.md`](.impeccable.md).
 
 ## Related
 
 - [tt-oca-harness](https://github.com/tenstorrent/tt-oca-harness): OCA Harness RTL, documentation and register tooling
 - [tt-oca-harness-model](https://github.com/tenstorrent/tt-oca-harness-model): SystemC/TLM virtual platforms of the Harness
-- [tenstorrent/tt-oca-harness-model#284](https://github.com/tenstorrent/tt-oca-harness-model/pull/284): the smu-vp `[double]` INI fix the composer depends on
+- [kadomoto/tt-oca-harness-model `feat/mdie-vp`](https://github.com/kadomoto/tt-oca-harness-model/tree/feat/mdie-vp): the two-die platform and the chiplet logic window the composer uses
