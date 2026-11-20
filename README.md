@@ -10,11 +10,11 @@
 </p>
 
 <p align="center">
-  <a href="https://kadomoto.github.io/oca-chiplet-composer/">Documentation</a> ·
-  <a href="https://kadomoto.github.io/oca-chiplet-composer/getting-started/install/">Install</a> ·
-  <a href="https://kadomoto.github.io/oca-chiplet-composer/getting-started/first-package/">Your first package</a> ·
-  <a href="https://kadomoto.github.io/oca-chiplet-composer/tutorials/two-die/">Simulate links</a> ·
-  <a href="https://kadomoto.github.io/oca-chiplet-composer/reference/register-map/">Reference</a>
+  <a href="https://tartetrat.site/oca-chiplet-composer/">Documentation</a> ·
+  <a href="https://tartetrat.site/oca-chiplet-composer/getting-started/install/">Install</a> ·
+  <a href="https://tartetrat.site/oca-chiplet-composer/getting-started/first-package/">Your first package</a> ·
+  <a href="https://tartetrat.site/oca-chiplet-composer/tutorials/two-die/">Simulate links</a> ·
+  <a href="https://tartetrat.site/oca-chiplet-composer/reference/register-map/">Reference</a>
 </p>
 
 ![Demo: dragging a die updates the checks; switching to a silicon interposer shows UCIe-A reach errors; a new die is added and linked; a compute chiplet gets its own logic; a Harness VP run simulates each link as two real dies; the generated Harness setup and the chiplet logic results are shown; a sweep compares package technologies](docs/demo.gif)
@@ -39,17 +39,17 @@ pip install -r backend/requirements.txt
 ./start.sh
 ```
 
-Open http://127.0.0.1:8765. The example design loads on first start. The analytic models need only Python; the Harness virtual platform needs Linux, a SystemC toolchain and a build of tt-oca-harness-model, covered in [Install](https://kadomoto.github.io/oca-chiplet-composer/getting-started/install/#add-the-harness-virtual-platform).
+Open http://127.0.0.1:8765. The example design loads on first start. The analytic models need only Python; the Harness virtual platform needs Linux, a SystemC toolchain and a build of tt-oca-harness-model, covered in [Install](https://tartetrat.site/oca-chiplet-composer/getting-started/install/#add-the-harness-virtual-platform).
 
 ## Documentation
 
-The documentation is at **[kadomoto.github.io/oca-chiplet-composer](https://kadomoto.github.io/oca-chiplet-composer/)**. Its source is in [`docs/`](docs/).
+The documentation is at **[tartetrat.site/oca-chiplet-composer](https://tartetrat.site/oca-chiplet-composer/)**. Its source is in [`docs/`](docs/).
 
-- **Start:** [Overview](https://kadomoto.github.io/oca-chiplet-composer/overview/) · [Install](https://kadomoto.github.io/oca-chiplet-composer/getting-started/install/) · [Your first package](https://kadomoto.github.io/oca-chiplet-composer/getting-started/first-package/)
-- **Tutorials:** [Simulate links on the Harness](https://kadomoto.github.io/oca-chiplet-composer/tutorials/two-die/) · [Model a chiplet's own logic](https://kadomoto.github.io/oca-chiplet-composer/tutorials/chiplet-logic/)
-- **Guides:** [Packages and design rules](https://kadomoto.github.io/oca-chiplet-composer/guide/packages/) · [Links and traffic](https://kadomoto.github.io/oca-chiplet-composer/guide/links-traffic/) · [Sweeps](https://kadomoto.github.io/oca-chiplet-composer/guide/sweeps/) · [Harness VP runs](https://kadomoto.github.io/oca-chiplet-composer/guide/harness-vp/) · [Generated Harness setup](https://kadomoto.github.io/oca-chiplet-composer/guide/harness-setup/) · [Export and rerun](https://kadomoto.github.io/oca-chiplet-composer/guide/export/)
-- **Reference:** [Register maps](https://kadomoto.github.io/oca-chiplet-composer/reference/register-map/) · [Register scripts](https://kadomoto.github.io/oca-chiplet-composer/reference/register-script/) · [Python model API](https://kadomoto.github.io/oca-chiplet-composer/reference/python-model/) · [mdie-vp](https://kadomoto.github.io/oca-chiplet-composer/reference/mdie-vp/) · [Analytic model](https://kadomoto.github.io/oca-chiplet-composer/reference/analytic-model/) · [HTTP API](https://kadomoto.github.io/oca-chiplet-composer/reference/http-api/)
-- **Help:** [Troubleshooting](https://kadomoto.github.io/oca-chiplet-composer/troubleshooting/) · [Limitations and roadmap](https://kadomoto.github.io/oca-chiplet-composer/roadmap/)
+- **Start:** [Overview](https://tartetrat.site/oca-chiplet-composer/overview/) · [Install](https://tartetrat.site/oca-chiplet-composer/getting-started/install/) · [Your first package](https://tartetrat.site/oca-chiplet-composer/getting-started/first-package/)
+- **Tutorials:** [Simulate links on the Harness](https://tartetrat.site/oca-chiplet-composer/tutorials/two-die/) · [Model a chiplet's own logic](https://tartetrat.site/oca-chiplet-composer/tutorials/chiplet-logic/)
+- **Guides:** [Packages and design rules](https://tartetrat.site/oca-chiplet-composer/guide/packages/) · [Links and traffic](https://tartetrat.site/oca-chiplet-composer/guide/links-traffic/) · [Sweeps](https://tartetrat.site/oca-chiplet-composer/guide/sweeps/) · [Harness VP runs](https://tartetrat.site/oca-chiplet-composer/guide/harness-vp/) · [Generated Harness setup](https://tartetrat.site/oca-chiplet-composer/guide/harness-setup/) · [Export and rerun](https://tartetrat.site/oca-chiplet-composer/guide/export/)
+- **Reference:** [Register maps](https://tartetrat.site/oca-chiplet-composer/reference/register-map/) · [Register scripts](https://tartetrat.site/oca-chiplet-composer/reference/register-script/) · [Python model API](https://tartetrat.site/oca-chiplet-composer/reference/python-model/) · [mdie-vp](https://tartetrat.site/oca-chiplet-composer/reference/mdie-vp/) · [Analytic model](https://tartetrat.site/oca-chiplet-composer/reference/analytic-model/) · [HTTP API](https://tartetrat.site/oca-chiplet-composer/reference/http-api/)
+- **Help:** [Troubleshooting](https://tartetrat.site/oca-chiplet-composer/troubleshooting/) · [Limitations and roadmap](https://tartetrat.site/oca-chiplet-composer/roadmap/)
 
 To preview the site locally: `pip install mkdocs==1.6.1 mkdocs-material==9.7.7 && mkdocs serve`.
 

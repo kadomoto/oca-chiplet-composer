@@ -1,6 +1,6 @@
 site_name: OCA Chiplet Composer
 site_description: Lay out chiplets on a package and check them with analytic models and the OCA Harness virtual platform
-site_url: https://kadomoto.github.io/oca-chiplet-composer/
+site_url: https://tartetrat.site/oca-chiplet-composer/
 repo_url: https://github.com/kadomoto/oca-chiplet-composer
 repo_name: kadomoto/oca-chiplet-composer
 edit_uri: edit/main/docs/
