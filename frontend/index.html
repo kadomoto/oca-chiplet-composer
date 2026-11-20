@@ -454,37 +454,6 @@ function renderCanvas(){
       <rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" rx="0.1" fill="url(#interposer)" stroke="#5d6670" stroke-width="${1/s}"><title>Silicon interposer</title></rect>
       <rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" fill="url(#ipGrid)" style="pointer-events:none"/>`;
   }
-  // ---- decoupling capacitors (0402 MLCCs) on the free substrate: perimeter rows and rings around dies
-  {
-    const occupied = D.chiplets.map(c => [c.x_mm - 0.7, c.y_mm - 0.7, c.x_mm + c.w_mm + 0.7, c.y_mm + c.h_mm + 0.7]);
-    if (ipBox) occupied.push([ipBox[0] - 0.8, ipBox[1] - 0.8, ipBox[2] + 0.8, ipBox[3] + 0.8]);
-    const phyEdges = new Set(physOK ? EVAL.phys.map(p => p.chip + p.edge) : []);
-    const caps = [];
-    const hit = (r, list) => list.some(o => r[0] < o[2] && o[0] < r[2] && r[1] < o[3] && o[1] < r[3]);
-    const tryCap = (cx, cy, horiz) => {
-      if (caps.length > 360) return;
-      const w = horiz ? 1.0 : 0.5, hh = horiz ? 0.5 : 1.0, r = [cx - w/2, cy - hh/2, cx + w/2, cy + hh/2];
-      if (r[0] < 0.5 || r[1] < 0.5 || r[2] > P.w_mm - 0.5 || r[3] > P.h_mm - 0.5) return;
-      if (hit(r, occupied) || hit(r, caps.map(c => [c[0] - 0.25, c[1] - 0.25, c[2] + 0.25, c[3] + 0.25]))) return;
-      caps.push(r);
-    };
-    const ring = (b, off, edgeOk) => {
-      const [x0, y0, x1, y1] = b;
-      for (let x = x0 + 0.6; x <= x1 - 0.6; x += 1.5){ if (edgeOk('N')) tryCap(x, y0 - off, true); if (edgeOk('S')) tryCap(x, y1 + off, true); }
-      for (let y = y0 + 0.6; y <= y1 - 0.6; y += 1.5){ if (edgeOk('W')) tryCap(x0 - off, y, false); if (edgeOk('E')) tryCap(x1 + off, y, false); }
-    };
-    // caps sit 1.0 mm out (ring) or 1.1 mm (interposer), just past the 0.7 / 0.8 mm keep-outs
-    if (ipBox) ring(ipBox, 1.1, () => true);
-    else for (const c of D.chiplets) ring([c.x_mm, c.y_mm, c.x_mm + c.w_mm, c.y_mm + c.h_mm], 1.0, e => !phyEdges.has(c.id + e));
-    for (let x = 2; x < P.w_mm - 1.5; x += 1.6){ tryCap(x, 1.6, true); tryCap(x, P.h_mm - 1.6, true); }
-    for (let y = 3; y < P.h_mm - 2.5; y += 1.6){ tryCap(1.6, y, false); tryCap(P.w_mm - 1.6, y, false); }
-    for (const [x0, y0, x1, y1] of caps){
-      const horiz = x1 - x0 > y1 - y0, t = horiz ? (x1 - x0) * 0.22 : (y1 - y0) * 0.22;
-      h += `<g style="pointer-events:none"><rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${y1 - y0}" rx="0.04" fill="#b99a6c"/>
-        ${horiz ? `<rect x="${x0}" y="${y0}" width="${t}" height="${y1 - y0}" fill="#d7dbe0"/><rect x="${x1 - t}" y="${y0}" width="${t}" height="${y1 - y0}" fill="#d7dbe0"/>`
-                : `<rect x="${x0}" y="${y0}" width="${x1 - x0}" height="${t}" fill="#d7dbe0"/><rect x="${x0}" y="${y1 - t}" width="${x1 - x0}" height="${t}" fill="#d7dbe0"/>`}</g>`;
-    }
-  }
   // ---- dimension lines, as on an assembly drawing
   const dy = -14/s, dx = -14/s, tk = 4/s, f = 11/s, sw = 1/s;
   h += `<g stroke="var(--ink-2)" stroke-width="${sw}" fill="none">

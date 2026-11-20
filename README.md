@@ -16,7 +16,7 @@ Choosing chiplet sizes, a package technology and die-to-die links is a physical 
 
 ## Features
 
-- Drag-and-drop editor with dies drawn to scale on a package that looks like the real thing: an organic substrate with decoupling capacitors, a silicon interposer for 2.5D, or embedded bridges under each link
+- Drag-and-drop editor with dies drawn to scale on a package that looks like the real thing: an organic substrate, a silicon interposer for 2.5D, or embedded bridges under each link
 - UCIe PHYs placed on the facing die edges, and links routed between them, shown as an X-ray view through the dies
 - Live design rule checks: substrate bounds, die spacing, UCIe reach, PHY shoreline per die edge, UCIe module count, and dies that don't face each other
 - Traffic flows routed on the lowest-latency path, with per-link utilisation and loaded latency
@@ -102,7 +102,7 @@ The composer drives `smu-vp`, the SMC + SEP virtual platform in tt-oca-harness-m
 
    | Technology | Typical use | Drawn as |
    |---|---|---|
-   | UCIe-S, organic | 2D multi-die packages, dies a few mm apart | dies on a build-up laminate substrate, ringed with decoupling capacitors |
+   | UCIe-S, organic | 2D multi-die packages, dies a few mm apart | dies on a build-up laminate substrate with pin 1 and fiducials |
    | UCIe-A, silicon interposer | 2.5D, e.g. compute dies with HBM stacks | dies packed on a silicon interposer that sits on the substrate |
    | UCIe-A, embedded bridge | 2.5D without a full interposer | a silicon bridge under each link, spanning the gap between the dies |
 
