@@ -1,8 +1,8 @@
 # OCA Chiplet Composer
 
-Lay out chiplets on a package in your browser, then check the result with two kinds of models: a fast analytic model that answers as you edit, and the [Open Chiplet Atlas Harness](https://github.com/tenstorrent/tt-oca-harness) virtual platform running real firmware.
+Lay out chiplets on a package in your browser, then check the result with two kinds of models: a fast analytic model that answers as you edit, and the [Open Chiplet Atlas Harness](https://github.com/tenstorrent/tt-oca-harness) virtual platform running real firmware. The composer also generates the Harness setup the firmware boots with: the package address map, the inbound filter entries and the AoU bring-up order.
 
-![Demo: dragging a die updates the checks; switching to a silicon interposer shows UCIe-A reach errors; a new die is added and linked; a Harness VP run simulates each link as two real dies; a sweep compares package technologies](docs/demo.gif)
+![Demo: dragging a die updates the checks; switching to a silicon interposer shows UCIe-A reach errors; a new die is added and linked; a Harness VP run simulates each link as two real dies; the Harness config tab shows the generated address map, AoU bring-up order and per-chiplet headers; a sweep compares package technologies](docs/demo.gif)
 
 > [!NOTE]
 > This is an independent research prototype built on Tenstorrent's open-source OCA Harness repositories. It is not an official Tenstorrent project. The physical numbers it uses (reach, bump pitch, energy, cost) are illustrative defaults, not vendor data.
