@@ -1,0 +1,9 @@
+# add 1 + 2 + 3 + 4 and check the result
+write IN_FIFO 1
+write IN_FIFO 2
+write IN_FIFO 3
+write IN_FIFO 4
+write CTRL START
+poll STATUS.DONE
+read RESULT
+expect RESULT 10

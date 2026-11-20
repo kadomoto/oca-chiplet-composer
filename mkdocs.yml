@@ -1,0 +1,107 @@
+site_name: OCA Chiplet Composer
+site_description: Lay out chiplets on a package and check them with analytic models and the OCA Harness virtual platform
+site_url: https://kadomoto.github.io/oca-chiplet-composer/
+repo_url: https://github.com/kadomoto/oca-chiplet-composer
+repo_name: kadomoto/oca-chiplet-composer
+edit_uri: edit/main/docs/
+copyright: An independent research prototype, not an official Tenstorrent project.
+
+theme:
+  name: material
+  logo: assets/logo.svg
+  favicon: assets/favicon.svg
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil-outline
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to the dark theme
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to the light theme
+  font:
+    text: Instrument Sans
+    code: IBM Plex Mono
+  features:
+    - navigation.sections
+    - navigation.tracking
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/kadomoto/oca-chiplet-composer
+      name: OCA Chiplet Composer on GitHub
+    - icon: material/bug-outline
+      link: https://github.com/kadomoto/oca-chiplet-composer/issues
+      name: Report a problem
+
+extra_css:
+  - assets/extra.css
+
+markdown_extensions:
+  - tables
+  - admonition
+  - attr_list
+  - md_in_html
+  - def_list
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.snippets:
+      base_path: [docs/examples]
+      check_paths: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+
+validation:
+  anchors: warn
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Overview: overview.md
+      - Install: getting-started/install.md
+      - "Your first package": getting-started/first-package.md
+  - Tutorials:
+      - "Simulate links on the Harness": tutorials/two-die.md
+      - "Model a chiplet's own logic": tutorials/chiplet-logic.md
+  - Guides:
+      - Packages and design rules: guide/packages.md
+      - Links and traffic: guide/links-traffic.md
+      - Sweeps: guide/sweeps.md
+      - Harness VP runs: guide/harness-vp.md
+      - Generated Harness setup: guide/harness-setup.md
+      - Export and rerun: guide/export.md
+  - Reference:
+      - Register maps: reference/register-map.md
+      - Register scripts: reference/register-script.md
+      - Python model API: reference/python-model.md
+      - mdie-vp: reference/mdie-vp.md
+      - Analytic model: reference/analytic-model.md
+      - Design file: reference/design-file.md
+      - HTTP API: reference/http-api.md
+      - Keyboard: reference/keyboard.md
+  - Help:
+      - Troubleshooting: troubleshooting.md
+      - Limitations and roadmap: roadmap.md

@@ -1,0 +1,14 @@
+{
+  "name": "summer",
+  "window_size": 4096,
+  "access_ns": 4,
+  "params": {"ns_per_word": 50},
+  "registers": [
+    {"name": "CTRL",    "offset": 0,  "access": "rw",     "reset": 0, "doc": "START adds up the words in IN_FIFO",
+     "fields": [{"name": "START", "lsb": 0, "width": 1}]},
+    {"name": "STATUS",  "offset": 4,  "access": "ro",     "reset": 0, "doc": "BUSY while adding, DONE when RESULT is valid",
+     "fields": [{"name": "BUSY", "lsb": 0, "width": 1}, {"name": "DONE", "lsb": 1, "width": 1}]},
+    {"name": "IN_FIFO", "offset": 8,  "access": "fifo_w", "reset": 0, "doc": "push the words to add"},
+    {"name": "RESULT",  "offset": 12, "access": "ro",     "reset": 0, "doc": "sum of the words, valid when DONE"}
+  ]
+}

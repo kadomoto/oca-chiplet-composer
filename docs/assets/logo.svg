@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="OCA Chiplet Composer">
+  <rect x="2" y="2" width="44" height="44" rx="5" fill="#2a6347"/>
+  <path d="M5.5 5.5h6l-6 6z" fill="#d9b25a"/>
+  <rect x="8" y="16" width="11" height="22" rx="1" fill="#20262e" stroke="#cbb994" stroke-width="1.2"/>
+  <rect x="22.5" y="9" width="17" height="15" rx="1" fill="#20262e" stroke="#cbb994" stroke-width="1.2"/>
+  <rect x="22.5" y="27" width="17" height="12" rx="1" fill="#20262e" stroke="#cbb994" stroke-width="1.2"/>
+  <rect x="17.6" y="19.5" width="6.2" height="2.6" fill="#d9b25a"/>
+  <rect x="17.6" y="31.5" width="6.2" height="2.6" fill="#d9b25a"/>
+  <rect x="29.6" y="22.6" width="2.6" height="5.8" fill="#d9b25a"/>
+</svg>
