@@ -16,3 +16,6 @@ firmware/oca-latency-probe/oca_probe_sep
 
 # Private correspondence drafts
 reply-to-*.md
+
+# Local toolchain paths (copy of oca-env.example.sh)
+oca-env.sh
