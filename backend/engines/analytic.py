@@ -188,6 +188,16 @@ def validate(design: dict) -> list[dict]:
     issues.extend(phy_issues)
     from engines import config_gen            # Harness address-map capacity
     issues.extend(config_gen.issues(design))
+    from engines import regmap as R           # chiplet logic: register map and script
+    for c in design["chiplets"]:
+        lg = c.get("logic") or {}
+        if not lg.get("enabled"):
+            continue
+        errs = R.validate(lg.get("regmap") or {"registers": []})
+        if not errs:
+            errs = R.parse_script(lg.get("script", ""), lg["regmap"])[1]
+        for e in errs[:3]:
+            add("error", f"{c['name']} logic: {e}", c["id"])
     ports_used = {c: 0 for c in chips}
     for l in design["links"]:
         if l["a"] not in chips or l["b"] not in chips:

@@ -23,6 +23,7 @@ Choosing chiplet sizes, a package technology and die-to-die links is a physical 
 - Sweeps over package technology, data rate, modules per link, layout spread or defect density
 - Harness VP runs: a firmware scenario per chiplet, and a two-die co-simulation per link that measures the round trip between the two chiplets' SMCs
 - Generated Harness setup: a package address map (each chiplet's SMC global window), SMC inbound filter entries and the AoU bring-up order per link, as JSON and C headers that the link firmware boots with
+- Chiplet logic: give a chiplet a register map and a Python model of what it does beyond the Harness, then drive it from firmware with a short register script
 - Export of a bundle with the design, the analytic report, the generated setup, and a self-contained `run.sh` for every job
 - Undo and redo, full keyboard operation, and light and dark themes
 
@@ -128,12 +129,27 @@ The composer drives `smu-vp`, the SMC + SEP virtual platform in tt-oca-harness-m
    | Traffic | Each flow's path, zero-load and loaded latency, and the Harness VP estimate |
    | Dies & cost | Area, yield and cost per die, and the package |
    | Harness config | The generated setup: address map, AoU bring-up per link, inbound filter entries and a header per chiplet |
+   | Chiplet logic | The register map, Python model and register script of the selected chiplet, the generated C header, and the last run's reads, model log and access trace |
    | Sweep | One parameter varied across values, as a chart and a table |
    | Run | The server log of the last run |
    | Harness VP | Per-chiplet scenario results and per-link latency probes |
 
 6. **Run the Harness VP.** Tick **Harness VP** and press **Run simulation**. Each chiplet runs its scenario, chosen in its inspector. Each link runs its two chiplets together on `mdie-vp`: die 1 comes up and reports to die 0, die 0 checks a remote write and read-back, and the two SMCs exchange 16 ping-pongs over the link. Results come back in about a minute for the example design. They are marked out of date when you change the design afterwards.
 7. **Save or export.** Under **File**, save or import the design as JSON, or export a simulation bundle with an ini and `run.sh` for every job so you can rerun them by hand.
+
+### Chiplet logic
+
+A chiplet is more than its Harness. To model what it does, select it and press **Add chiplet logic** in the inspector, or add the **Radio chiplet (60 GHz)** from the palette, which comes with a complete example. The **Chiplet logic** tab then holds three things:
+
+| Part | What you write | What the composer does with it |
+|---|---|---|
+| Register map | Registers with an offset, an access type (`rw`, `ro`, `wo`, `w1c`, `fifo_w`, `fifo_r`), a reset value and named fields, plus model parameters | Gives every register its default behaviour, generates the C header firmware uses and a Python skeleton, and checks names, offsets and fields |
+| Python model | A `Model(RegisterModel)` class that overrides `update()`, `on_write()` or `on_read()` | Runs it behind the chiplet's logic window (`0x7000_0000` on its own die) through `mdie-vp`'s `py_bridge`; every access carries the simulation time |
+| Register script | One step per line: `write REG VALUE\|FIELD`, `read REG`, `poll REG.FIELD`, `expect REG[.FIELD] VALUE`, `wait NS` | Compiles it into a table that `firmware/oca-regscript` runs on the chiplet's SMC |
+
+The radio example models a 60 GHz chiplet-to-chiplet link. Pressing START sends the words in its TX FIFO; the transfer completes after its air time. RSSI, SNR and BER come from free-space path loss over `distance_mm`. With the example script, firmware on the radio's SMC reads back RSSI −66.6 dBm, SNR 6.4 dB and a BER of 1500 ppm.
+
+The window has no interrupt line yet, so scripts poll.
 
 ### Keyboard
 
@@ -189,9 +205,13 @@ backend/
   catalog.py             chiplet templates, package technologies, defaults
   engines/analytic.py    analytic model
   engines/config_gen.py  generated Harness setup (address map, filters, AoU roles)
+  engines/regmap.py      register maps: checks, C header, Python skeleton, register scripts
   engines/harness_vp.py  Harness VP runner
 firmware/oca-d2d-pingpong/    two-die link firmware; reads the generated oca_config_die<N>.h
 firmware/oca-latency-probe/   single-die fallback probe
+firmware/oca-regscript/       runs a generated register script against the chiplet logic
+usermodel/runtime.py          Python runtime behind the chiplet logic window
+usermodel/examples/           the 60 GHz radio: register map, model and script
 frontend/index.html      the whole web UI
 upstream-pr/             the smu-vp INI fix as sent upstream (#284)
 oca-env.example.sh       toolchain paths template for the Harness VP

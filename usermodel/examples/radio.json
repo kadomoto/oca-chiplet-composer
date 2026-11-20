@@ -1,0 +1,27 @@
+{
+  "name": "radio",
+  "window_size": 4096,
+  "access_ns": 4,
+  "params": {
+    "distance_mm": 30,
+    "carrier_ghz": 60,
+    "bandwidth_mhz": 2000,
+    "data_rate_mbps": 4000,
+    "antenna_gain_dbi": 3,
+    "noise_figure_db": 8
+  },
+  "registers": [
+    {"name": "CTRL",         "offset": 0,  "access": "rw",     "reset": 0, "doc": "START sends the TX FIFO; RESET clears the statistics",
+     "fields": [{"name": "START", "lsb": 0, "width": 1}, {"name": "RESET", "lsb": 1, "width": 1}]},
+    {"name": "STATUS",       "offset": 4,  "access": "ro",     "reset": 4, "doc": "BUSY while transmitting, DONE after the last bit",
+     "fields": [{"name": "BUSY", "lsb": 0, "width": 1}, {"name": "DONE", "lsb": 1, "width": 1}, {"name": "FIFO_EMPTY", "lsb": 2, "width": 1}]},
+    {"name": "CHANNEL",      "offset": 8,  "access": "rw",     "reset": 0, "doc": "channel index, 0-5 (2.16 GHz channels)"},
+    {"name": "TX_POWER_DBM", "offset": 12, "access": "rw",     "reset": 0, "doc": "transmit power in dBm, signed"},
+    {"name": "TX_FIFO",      "offset": 16, "access": "fifo_w", "reset": 0, "doc": "push 32-bit words to send"},
+    {"name": "TX_COUNT",     "offset": 20, "access": "ro",     "reset": 0, "doc": "words sent since reset"},
+    {"name": "RSSI_DBM",     "offset": 24, "access": "ro",     "reset": 0, "doc": "received power at the peer, dBm, signed"},
+    {"name": "SNR_CDB",      "offset": 28, "access": "ro",     "reset": 0, "doc": "SNR in 0.01 dB, signed"},
+    {"name": "BER_PPM",      "offset": 32, "access": "ro",     "reset": 0, "doc": "expected bit error rate, parts per million"},
+    {"name": "AIRTIME_NS",   "offset": 36, "access": "ro",     "reset": 0, "doc": "air time of the last transfer, ns"}
+  ]
+}

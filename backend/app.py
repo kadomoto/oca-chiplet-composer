@@ -41,6 +41,7 @@ class Chiplet(BaseModel):
     ucie_ports: int = 4
     power_w: float = 0.0
     scenario: str | None = None
+    logic: dict | None = None      # {enabled, regmap, model, script}: the chiplet's own logic
 
 
 class Link(BaseModel):
@@ -128,7 +129,7 @@ JOBS: dict[str, Job] = {}
 # --------------------------------------------------------------------------- API
 @app.get("/api/catalog")
 def get_catalog():
-    return {"chiplets": catalog.CHIPLET_TEMPLATES, "packages": catalog.PACKAGES,
+    return {"chiplets": catalog.CHIPLET_TEMPLATES, "packages": catalog.PACKAGES, "empty_logic": catalog.EMPTY_LOGIC,
             "link_defaults": catalog.DEFAULT_LINK, "process": catalog.DEFAULT_PROCESS,
             "harness_vp": harness_vp.status()}
 
@@ -212,6 +213,30 @@ def sweep(req: SweepRequest):
     return {"param": req.param, "label": SWEEPS[req.param]["label"], "rows": rows}
 
 
+class LogicRequest(BaseModel):
+    regmap: dict
+    script: str = ""
+    model: str = ""
+
+
+@app.post("/api/logic/check")
+def logic_check(req: LogicRequest):
+    """Validate a register map and script; return the generated header and skeleton."""
+    from engines import regmap as R
+    errs = R.validate(req.regmap)
+    ops, serrs = ([], []) if errs else R.parse_script(req.script, req.regmap)
+    out = {"errors": errs + serrs, "ops": ops}
+    if not errs:
+        out["c_header"] = R.c_header(req.regmap)
+        out["python_skeleton"] = R.python_skeleton(req.regmap)
+    if req.model.strip():
+        try:
+            compile(req.model, "model.py", "exec")
+        except SyntaxError as e:
+            out["errors"].append(f"Model: line {e.lineno}: {e.msg}.")
+    return out
+
+
 @app.post("/api/config")
 def harness_config(design: Design):
     """Generated Harness setup: address map, inbound filters, AoU roles, headers."""
@@ -293,6 +318,10 @@ def export(design: Design):
                 for f in sorted(fw.iterdir()):
                     if f.is_file() and f.suffix in (".h", ".c", ".mk") or f.name == "Makefile":
                         z.write(f, f"vp/{sub}/fw/{f.name}")
+        for j in p.get("logic", []):   # chiplet logic: map, model, script, generated headers, run.sh
+            for f in sorted(Path(j["dir"]).rglob("*")):
+                if f.is_file() and (f.suffix in (".json", ".py", ".txt", ".h", ".c", ".mk", ".sh", ".ini") or f.name == "Makefile"):
+                    z.write(f, f"vp/logic/{j['chiplet']}/{f.relative_to(j['dir'])}")
         from engines import config_gen
         cfg = p["config"]
         z.writestr("config/package.json", json.dumps(cfg, indent=2))

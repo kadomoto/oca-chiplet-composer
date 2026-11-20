@@ -22,3 +22,6 @@ oca-env.sh
 firmware/oca-d2d-pingpong/oca_d2d_smc0
 firmware/oca-d2d-pingpong/oca_d2d_smc1
 firmware/oca-d2d-pingpong/oca_d2d_sep
+firmware/oca-regscript/oca_rs_rs
+firmware/oca-regscript/oca_rs_idle
+firmware/oca-regscript/oca_rs_sep

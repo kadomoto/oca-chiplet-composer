@@ -30,6 +30,7 @@ injected delays.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import shlex
@@ -40,6 +41,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from . import config_gen
+from . import regmap as R
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
@@ -55,6 +57,10 @@ PROBE_SIM_MS = 5
 MDIE_VP = Path(os.environ.get("OCA_MDIE_VP", MODEL_ROOT / "vp" / "build_smc" / "bin" / "mdie-vp"))
 D2D_DIR = ROOT / "firmware" / "oca-d2d-pingpong"
 D2D_SOURCES = ("Makefile", "smc.mk", "sep.mk", "smc_main.c", "smc_die0.c", "smc_die1.c", "sep_main.c")
+RS_DIR = ROOT / "firmware" / "oca-regscript"
+RS_SOURCES = ("Makefile", "smc.mk", "sep.mk", "smc_rs.c", "smc_idle.c", "sep_main.c")
+RUNTIME = ROOT / "usermodel" / "runtime.py"
+LOGIC_SIM_MS = 5
 D2D_SIM_MS = 20
 D2D_QUANTUM = {"dut.cluster.quantum_insts": 5, "global_quantum_ns": 5}   # finer = closer to the injected delay, slower
 D2D_TICK_NS = 1.0
@@ -199,7 +205,51 @@ def plan(design: dict, analytic: dict, workdir: Path) -> dict:
             script = ("#!/usr/bin/env bash\n# Rebuild firmware with `make` in fw_dir first.\nset -e\n"
                       f"cd {shlex.quote(j['fw_dir'])}\n" + shlex.join(_cmd(j)) + "\n")
         Path(j["dir"], "run.sh").write_text(script)
-    return {"chiplets": chip_jobs, "links": link_jobs, "config": pkg}
+    logic_jobs = []
+    for c in design["chiplets"]:
+        lg = c.get("logic") or {}
+        if not lg.get("enabled") or not d2d:
+            continue
+        rm = lg.get("regmap") or {}
+        if R.validate(rm):
+            continue                      # reported by the DRC; nothing runnable
+        ops, serrs = R.parse_script(lg.get("script", ""), rm)
+        if serrs:
+            continue
+        d = workdir / "logic" / c["id"]
+        fw = d / "fw"
+        fw.mkdir(parents=True, exist_ok=True)
+        for f in RS_SOURCES:
+            shutil.copy2(RS_DIR / f, fw / f)
+        (fw / "oca_script.h").write_text(R.script_header(rm, ops))
+        (fw / f"{rm['name']}_regs.h").write_text(R.c_header(rm))
+        (d / "regmap.json").write_text(json.dumps(rm, indent=2))
+        (d / "script.txt").write_text(lg.get("script", ""))
+        model = d / "model.py"
+        model.write_text(lg.get("model") or "")
+        cmd = (f"python3 {shlex.quote(str(RUNTIME))} --regmap {shlex.quote(str(d / 'regmap.json'))}"
+               + (f" --model {shlex.quote(str(model))}" if (lg.get("model") or "").strip() else "")
+               + f" --trace {shlex.quote(str(d / 'trace.jsonl'))}")
+        ini = d / "smc_smu_vp.ini"
+        ini.write_text(_ini(0.0, f"chiplet logic of {c['name']} ({rm['name']}), window 0x{R.USER_BASE:08X}",
+                            D2D_TICK_NS, {"mdie.die0.user_base": R.USER_BASE,
+                                          "mdie.die0.user_size": int(rm.get("window_size", 0x1000))})
+                       + f"[string]\nmdie.die0.user_model : {cmd}\n")
+        logic_jobs.append({"kind": "logic", "mode": "logic", "chiplet": c["id"], "name": c["name"],
+                           "logic_name": rm["name"], "steps": len(ops), "ini": str(ini),
+                           "fw_dir": str(fw), "dir": str(d), "sim_ms": LOGIC_SIM_MS,
+                           "bridge_delay_ns": 0.0})
+    for j in logic_jobs:
+        Path(j["dir"], "run.sh").write_text(
+            "#!/usr/bin/env bash\n# Chiplet logic run on mdie-vp: the register script on die 0 against the Python model.\n"
+            "set -e\nHERE=$(cd \"$(dirname \"$0\")\" && pwd)\n"
+            f": \"${{MODEL_ROOT:={MODEL_ROOT}}}\"\n"
+            f": \"${{MDIE_VP:=$MODEL_ROOT/vp/build_smc/bin/mdie-vp}}\"\n"
+            "make -C \"$HERE/fw\" -s MODEL_ROOT=\"$MODEL_ROOT\"\ncd \"$HERE/fw\"\n"
+            f"\"$MDIE_VP\" \"$HERE/smc_smu_vp.ini\" \"$MODEL_ROOT/vp/platform/smu/config/sep_smu_config.ini\" {LOGIC_SIM_MS} "
+            "\"$HERE/fw/oca_rs_rs\" \"$HERE/fw/oca_rs_sep\" \"$HERE/fw/oca_rs_idle\" \"$HERE/fw/oca_rs_sep\"\n"
+            "# the model process path in smc_smu_vp.ini is absolute; edit it if you move this folder\n")
+    return {"chiplets": chip_jobs, "links": link_jobs, "logic": logic_jobs, "config": pkg}
 
 
 def _elves(fw_dir: Path):
@@ -213,6 +263,9 @@ def _cmd(j) -> list[str]:
     if j.get("mode") == "d2d":
         smc0, smc1, sep = (str(fw / f) for f in ("oca_d2d_smc0", "oca_d2d_smc1", "oca_d2d_sep"))
         return [str(MDIE_VP), j["ini"], str(SEP_INI), str(j["sim_ms"]), smc0, sep, smc1, sep]
+    if j.get("mode") == "logic":
+        rs, idle, sep = (str(fw / f) for f in ("oca_rs_rs", "oca_rs_idle", "oca_rs_sep"))
+        return [str(MDIE_VP), j["ini"], str(SEP_INI), str(j["sim_ms"]), rs, sep, idle, sep]
     smc, sep = _elves(fw) if fw.is_dir() else (None, None)
     smc_arg = str(smc) if smc else "none"
     sep_arg = str(sep) if sep else str(fw / "<sep-elf>")
@@ -241,7 +294,7 @@ def _build(fw_dir: Path, log) -> bool:
 
 
 # Lines worth streaming to the GUI; everything still goes to sim.log.
-_KEEP = re.compile(r"^(smu-vp:|mdie-vp:|===|.*\bPASS:|.*\bFAIL:|OCA_PROBE|OCA_D2D|SMC->|SEP->|AOU|ERROR)")
+_KEEP = re.compile(r"^(smu-vp:|mdie-vp:|===|.*\bPASS:|.*\bFAIL:|OCA_PROBE|OCA_D2D|OCA_REG|.*\[model |SMC->|SEP->|AOU|ERROR)")
 _UART_BEGIN = re.compile(r"^---- (die(\d) )?SMC UART0 output")
 _UART_END = re.compile(r"^---- end (die\d )?SMC UART0")
 
@@ -250,7 +303,7 @@ def _exec(j, log, cancelled, quiet=False) -> dict:
     if cancelled():
         return {**j, "result": "CANCELLED"}
     cmd = _cmd(j)
-    if j.get("mode") != "d2d" and cmd[2] == "none" and not j.get("ini_overridden"):
+    if j.get("mode") not in ("d2d", "logic") and cmd[2] == "none" and not j.get("ini_overridden"):
         return {**j, "result": "FAIL (no SMC ELF after build)"}
     logf = Path(j["dir"]) / "sim.log"
     with subprocess.Popen(cmd, cwd=j["fw_dir"], stdout=subprocess.PIPE,
@@ -271,7 +324,7 @@ def _exec(j, log, cancelled, quiet=False) -> dict:
                 p.kill()
         rc = p.wait()
     text = logf.read_text()
-    if j.get("mode") == "d2d":
+    if j.get("mode") in ("d2d", "logic"):
         # Two SEPs share one console and interleave, so judge on the two SMC banners.
         smc_ok = all(re.search(rf"PASS: .*die{k} \(SMC side\)", text) for k in (0, 1))
         sep_ok = True
@@ -293,6 +346,12 @@ def _exec(j, log, cancelled, quiet=False) -> dict:
         hops, ticks, spin = map(int, m.groups())
         out["probe"] = {"mode": "probe", "hops": hops, "ticks": ticks, "spin": spin,
                         "ns_per_access": round(max(ticks - spin, 0) * PROBE_TICK_NS / hops, 2)}
+    if j.get("mode") == "logic":
+        out["reads"] = [{"step": int(a), "reg": b, "value": int(c, 16), "t_ns": int(t)}
+                        for a, b, c, t in re.findall(r"OCA_REG (\d+) (\S+) 0x([0-9a-f]+) t=(\d+)", text)]
+        out["model_log"] = re.findall(r"\[model [^\]]*\] [^\n\[]*", text)[:60]
+        tr = Path(j["dir"]) / "trace.jsonl"
+        out["trace"] = [json.loads(x) for x in tr.read_text().splitlines()[:400] if x.strip()] if tr.is_file() else []
     m = re.search(r"OCA_D2D rounds=(\d+) ticks=(\d+)", text)
     if m:
         rounds, ticks = map(int, m.groups())
@@ -339,9 +398,9 @@ def run(design: dict, analytic: dict, workdir: Path, log=print, cancelled=lambda
             "Or set OCA_SMU_VP / OCA_MODEL_ROOT.")
         log("[harness-vp] wrote an ini and run.sh per job so they can be run by hand.")
         nr = lambda js: [{**j, "result": "NOT RUN"} for j in js]
-        return {"available": False, "jobs": nr(p["chiplets"]), "links": nr(p["links"])}
+        return {"available": False, "jobs": nr(p["chiplets"]), "links": nr(p["links"]), "logic": nr(p["logic"])}
 
-    fw_dirs = {Path(j["fw_dir"]) for j in p["chiplets"] + p["links"]}
+    fw_dirs = {Path(j["fw_dir"]) for j in p["chiplets"] + p["links"] + p["logic"]}
     built = {d: _build(d, log) for d in sorted(fw_dirs)}
     mode = p["links"][0]["mode"] if p["links"] else None
     if mode == "d2d":
@@ -368,11 +427,15 @@ def run(design: dict, analytic: dict, workdir: Path, log=print, cancelled=lambda
                     f"firmware sees {pr['ns_per_access']} ns/access ({r['result']})")
         elif j["kind"] == "chiplet":
             log(f"[harness-vp] {j['name']} / {j['scenario']}: {r['result']}")
+        elif j["kind"] == "logic":
+            log(f"[harness-vp] {j['name']} logic ({j['logic_name']}): {len(r.get('reads', []))} reads, "
+                f"{len(r.get('trace', []))} accesses traced ({r['result']})")
         return r
 
     workers = max(1, int(design.get("sim", {}).get("parallel", 4)))
     with ThreadPoolExecutor(max_workers=workers) as ex:
         chips = list(ex.map(one, p["chiplets"]))
         links = list(ex.map(one, p["links"]))
-    return {"available": True, "jobs": chips, "links": links, "baseline": base, "link_mode": mode,
+        logic = list(ex.map(one, p["logic"]))
+    return {"available": True, "jobs": chips, "links": links, "logic": logic, "baseline": base, "link_mode": mode,
             "config": p["config"]}

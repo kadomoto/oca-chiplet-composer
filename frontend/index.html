@@ -135,6 +135,15 @@ tbody th{font-weight:var(--w-body);color:var(--ink-2)}
 .rowbtn{border:0;background:none;padding:0;cursor:pointer;color:var(--cobalt);text-align:left;font-size:inherit}
 .rowbtn:hover{text-decoration:underline;text-underline-offset:2px}
 .objlist{list-style:none;margin:0;padding:0}
+main:has(#tab-logic[aria-selected="true"]){grid-template-rows:auto minmax(0,1fr) 58vh}
+@media (max-width:900px){main:has(#tab-logic[aria-selected="true"]) #bottom{height:80vh}}
+.logic-grid{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:var(--s-5)}
+@media (max-width:1300px){.logic-grid{grid-template-columns:minmax(0,1fr)}}
+.code{white-space:pre;overflow:auto;width:100%;font-family:var(--mono);font-size:var(--text-xs);line-height:1.55;border:1px solid var(--rule);border-radius:4px;background:var(--page);color:var(--ink);padding:var(--s-2);tab-size:4;resize:vertical}
+.regtbl{table-layout:fixed}
+.regtbl input,.regtbl select{width:100%;min-width:0;font-size:var(--text-xs);padding:3px 5px}
+.regtbl col.c-name{width:20%}.regtbl col.c-off{width:11%}.regtbl col.c-acc{width:13%}.regtbl col.c-rst{width:9%}.regtbl col.c-fld{width:25%}.regtbl col.c-doc{width:18%}.regtbl col.c-del{width:40px}
+.regtbl td{padding:2px var(--s-1) 2px 0}
 .tabbody details{border-bottom:1px solid var(--rule-2);padding:var(--s-1) 0}
 .tabbody summary{cursor:pointer;color:var(--cobalt)}
 .tabbody details pre{margin:var(--s-2) 0;padding:var(--s-2) var(--s-3);background:var(--surface-2);border-radius:4px;overflow-x:auto}
@@ -313,11 +322,13 @@ function exampleDesign(){
       {id:'c1', name:'Compute1', kind:'compute', x_mm:12, y_mm:19, w_mm:10, h_mm:10, ucie_ports:4, power_w:60, scenario:'smu-traffic-test'},
       {id:'m0', name:'Mem0', kind:'memory', x_mm:24, y_mm:3, w_mm:7, h_mm:9, ucie_ports:2, power_w:12, scenario:'smu-mailbox-test'},
       {id:'m1', name:'Mem1', kind:'memory', x_mm:24, y_mm:20, w_mm:7, h_mm:9, ucie_ports:2, power_w:12, scenario:'smu-mailbox-test'},
+      {id:'r0', name:'Radio0', kind:'radio', x_mm:4, y_mm:2.5, w_mm:5, h_mm:5, ucie_ports:2, power_w:3, scenario:'smu-aou-ext-test',
+       ...(CAT?.chiplets.find(t => t.kind === 'radio')?.logic ? {logic: structuredClone(CAT.chiplets.find(t => t.kind === 'radio').logic)} : {})},
     ],
     links: [
       {id:'l0', a:'io0', b:'c0', modules:1}, {id:'l1', a:'io0', b:'c1', modules:1},
       {id:'l2', a:'c0', b:'c1', modules:1}, {id:'l3', a:'c0', b:'m0', modules:1},
-      {id:'l4', a:'c1', b:'m1', modules:1},
+      {id:'l4', a:'c1', b:'m1', modules:1}, {id:'l5', a:'r0', b:'io0', modules:1},
     ],
     flows: [
       {src:'c0', dst:'m0', gbs:24}, {src:'c1', dst:'m1', gbs:24},
@@ -399,7 +410,8 @@ function addChiplet(i, x, y){
   const n = D.chiplets.filter(c => c.kind === t.kind).length;
   const c = {id: uid(t.kind[0]), name: `${t.kind[0].toUpperCase()}${t.kind.slice(1)}${n}`, kind: t.kind,
     x_mm: x ?? 1, y_mm: y ?? 1, w_mm: t.w_mm, h_mm: t.h_mm, ucie_ports: t.ucie_ports, power_w: t.power_w,
-    scenario: CAT.harness_vp.scenarios.includes('smu-aou-ext-test') ? 'smu-aou-ext-test' : (CAT.harness_vp.scenarios[0] || null)};
+    scenario: CAT.harness_vp.scenarios.includes('smu-aou-ext-test') ? 'smu-aou-ext-test' : (CAT.harness_vp.scenarios[0] || null),
+    ...(t.logic ? {logic: structuredClone(t.logic)} : {})};
   D.chiplets.push(c); SEL = {type:'chiplet', id:c.id}; changed();
   announce(`Added ${c.name}. Use the arrow keys to move it.`);
 }
@@ -698,6 +710,12 @@ function renderInspector(){
       <h3>Connect</h3>
       <div class="field"><label for="f-connect">Link to</label><select id="f-connect" name="connect">${others.map(o => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}</select></div>
       <p><button type="button" class="btn" id="bConnect" ${others.length ? '' : 'disabled'}>Add link</button></p>
+      <h3>Chiplet logic</h3>
+      ${c.logic?.enabled
+        ? `<p class="hint">${esc(c.logic.regmap?.name || 'logic')}: ${(c.logic.regmap?.registers || []).length} registers at <span class="mono" translate="no">0x7000_0000</span>, modelled in Python.</p>
+           <p><button type="button" class="btn" id="bLogic">Edit chiplet logic</button></p>`
+        : `<p class="hint">Model what this chiplet does beyond the Harness: a register map, a Python model and a script that firmware runs.</p>
+           <p><button type="button" class="btn" id="bLogic">Add chiplet logic</button></p>`}
       <h3>Harness</h3>
       <div class="hint">SMC, SEP, SMU and AoU are present on every OCA chiplet.</div>
       <div class="field"><label for="f-scen">VP scenario</label><select id="f-scen" name="scenario" data-k="scenario">${scen.length ? scen.map(s => `<option value="${s}" ${s===c.scenario?'selected':''}>${s}${(CAT.harness_vp.aou_scenarios||[]).includes(s) ? ' ⟷ AoU' : ''}</option>`).join('') : '<option>(model repo not found)</option>'}</select></div>
@@ -706,6 +724,8 @@ function renderInspector(){
       <p><button type="button" class="btn" id="bDel">Delete chiplet</button></p>`;
     bindInspector(el, c);
     $('#bConnect').onclick = () => addLink(c.id, $('#f-connect').value);
+    $('#bLogic').onclick = () => { if (!c.logic?.enabled){ c.logic = structuredClone(CAT.empty_logic); changed(); }
+      LOGIC_SEL = c.id; TAB = 'logic'; history.replaceState(null, '', '#tab=logic'); renderTabs(true); $('#tab-logic')?.focus(); };
   } else {
     const l = D.links.find(x => x.id === SEL.id); if (!l){ SEL = null; return renderInspector(); }
     const ld = CAT.link_defaults;
@@ -783,8 +803,8 @@ function bindInspector(el, obj){
 }
 
 // ============================================================ bottom tabs
-const TABS = [['checks','Checks'],['links','Links'],['flows','Traffic'],['dies','Dies & cost'],['config','Harness config'],['sweep','Sweep'],['run','Run'],['vp','Harness VP']];
-function renderTabs(){
+const TABS = [['checks','Checks'],['links','Links'],['flows','Traffic'],['dies','Dies & cost'],['config','Harness config'],['logic','Chiplet logic'],['sweep','Sweep'],['run','Run'],['vp','Harness VP']];
+function renderTabs(force){
   const n = EVAL ? EVAL.summary.errors + EVAL.summary.warnings : 0;
   const focusedTab = document.activeElement?.closest?.('#tabs') ? TAB : null;
   $('#tabs').innerHTML = TABS.map(([k, l]) => `<button type="button" role="tab" id="tab-${k}" aria-controls="tabbody" aria-selected="${TAB===k}" tabindex="${TAB===k ? 0 : -1}" data-t="${k}" class="${TAB===k?'active':''}">${l}${k==='checks' && n ? ` (${n})` : ''}${k==='run' && RUN ? ` (${RUN.state})` : ''}</button>`).join('');
@@ -798,10 +818,11 @@ function renderTabs(){
   if (focusedTab) $('#tab-' + focusedTab)?.focus();
   const body = $('#tabbody');
   body.setAttribute('aria-labelledby', 'tab-' + TAB);
-  if (body.contains(document.activeElement) && TAB === 'flows') return;
-  body.innerHTML = ({checks: tabChecks, links: tabLinks, flows: tabFlows, dies: tabDies, config: tabConfig, sweep: tabSweep, run: tabRun, vp: tabVP}[TAB])();
+  if (!force && body.contains(document.activeElement) && (TAB === 'flows' || TAB === 'logic')) return;
+  body.innerHTML = ({checks: tabChecks, links: tabLinks, flows: tabFlows, dies: tabDies, config: tabConfig, logic: tabLogic, sweep: tabSweep, run: tabRun, vp: tabVP}[TAB])();
   if (TAB === 'flows') bindFlows();
   if (TAB === 'sweep') bindSweep();
+  if (TAB === 'logic') bindLogic();
   body.querySelectorAll('[data-sel]').forEach(b => b.onclick = () => { const [type, id] = b.dataset.sel.split(':'); SEL = {type, id}; render(); });
   const bc = $('#bCancel'); if (bc) bc.onclick = cancelRun;
   body.scrollTop = TAB === 'run' ? body.scrollHeight : 0;
@@ -1028,6 +1049,139 @@ function tabConfig(){
       <td class="mono" translate="no">${hex(f.config)}</td></tr>`)).join('') || '<tr><td colspan="5" class="hint">No entries: add a link first.</td></tr>'}</tbody></table>
     <h3>Generated headers</h3>
     ${Object.entries(c.chiplet_headers || {}).map(([id, h]) => `<details><summary>${nm(id)}</summary><pre translate="no">${esc(h)}</pre></details>`).join('')}`;
+}
+
+
+// ============================================================ chiplet logic (register map, Python model, register script)
+let LOGIC_SEL = null, LOGIC_CHECK = {key: null, data: null};
+const signed = v => v >= 0x80000000 ? v - 0x100000000 : v;
+const fieldsText = r => (r.fields || []).map(f => f.width > 1 ? `${f.name}:${f.lsb}:${f.width}` : `${f.name}:${f.lsb}`).join(', ');
+function parseFields(t){
+  return t.split(',').map(x => x.trim()).filter(Boolean).map(x => { const [name, lsb, width] = x.split(':').map(y => y.trim());
+    return {name, lsb: +lsb || 0, width: +width || 1}; });
+}
+const paramsText = p => Object.entries(p || {}).map(([k, v]) => `${k} = ${v}`).join('\n');
+function parseParams(t){
+  const o = {};
+  for (const line of t.split('\n')){ const m = line.match(/^\s*([A-Za-z_]\w*)\s*=\s*(.+?)\s*$/); if (m) o[m[1]] = isNaN(+m[2]) ? m[2] : +m[2]; }
+  return o;
+}
+function logicChip(){
+  const withLogic = D.chiplets.filter(c => c.logic?.enabled);
+  let c = chip(LOGIC_SEL);
+  if (!c?.logic?.enabled) c = (SEL?.type === 'chiplet' && chip(SEL.id)?.logic?.enabled) ? chip(SEL.id) : withLogic[0];
+  LOGIC_SEL = c?.id ?? null;
+  return [c, withLogic];
+}
+async function checkLogic(c){
+  const lg = c.logic, key = JSON.stringify([lg.regmap, lg.script, lg.model]);
+  if (LOGIC_CHECK.key === key) return LOGIC_CHECK.data;
+  try {
+    const r = await fetch(API + '/api/logic/check', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({regmap: lg.regmap, script: lg.script || '', model: lg.model || ''})});
+    LOGIC_CHECK = {key, data: r.ok ? await r.json() : {errors: [`The server could not check the logic (${r.status}).`]}};
+  } catch { LOGIC_CHECK = {key, data: {errors: ['Could not reach the server to check the logic.']}}; }
+  return LOGIC_CHECK.data;
+}
+function logicResults(c){
+  const vp = RUN?.result?.harness_vp, j = vp?.logic?.find(x => x.chiplet === c.id);
+  if (!j) return `<p class="hint">Tick “Harness VP” and press Run simulation: the script runs on ${esc(c.name)}'s SMC against this model on <span class="mono" translate="no">mdie-vp</span>.</p>`;
+  const stale = vpFresh() ? '' : '<p class="sev-warning">⚠ The design changed since this run.</p>';
+  return `${stale}<p>Result: <b class="${resCls(j.result)}">${esc(j.result)}</b></p>
+    <table><thead><tr><th scope="col">Step</th><th scope="col">Register</th><th scope="col">Value</th><th scope="col">Signed</th><th scope="col">MTIME (ns)</th></tr></thead><tbody>
+    ${(j.reads || []).map(r => `<tr><td>${r.step}</td><td>${esc(r.reg)}</td><td class="mono" translate="no">0x${r.value.toString(16).padStart(8, '0')}</td><td>${num(signed(r.value))}</td><td>${num(r.t_ns)}</td></tr>`).join('')}</tbody></table>
+    <h3>Model log</h3><pre translate="no">${esc((j.model_log || []).join('\n'))}</pre>
+    <details><summary>Access trace (${(j.trace || []).length})</summary><table><thead><tr><th scope="col">Time (ns)</th><th scope="col">Access</th><th scope="col">Register</th><th scope="col">Value</th></tr></thead><tbody>
+    ${(j.trace || []).map(t => `<tr><td>${num(t.t_ns)}</td><td>${t.op}</td><td>${esc(t.reg)}</td><td class="mono" translate="no">0x${(t.value >>> 0).toString(16).padStart(8, '0')}</td></tr>`).join('')}</tbody></table></details>`;
+}
+function tabLogic(){
+  const [c, withLogic] = logicChip();
+  if (!c) return `<p class="hint">No chiplet has its own logic yet. Select a chiplet and press “Add chiplet logic” in the inspector, or add a Radio chiplet from the palette: it comes with a 60 GHz link model.</p>`;
+  const rm = c.logic.regmap;
+  const acc = ['rw', 'ro', 'wo', 'w1c', 'fifo_w', 'fifo_r'];
+  return `<div class="sweepctl"><label class="hint" for="lgChip">Chiplet</label>
+      <select id="lgChip" name="logic-chiplet">${withLogic.map(x => `<option value="${x.id}" ${x.id === c.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
+      <span class="hint">Window <span class="mono" translate="no">0x7000_0000</span> on the chiplet's own die. Firmware runs the script; the Python model answers each access.</span>
+      <span class="grow"></span><button type="button" class="btn" id="lgRemove">Remove chiplet logic</button></div>
+    <div id="lgMsgs" aria-live="polite"></div>
+    <div class="logic-grid">
+      <section aria-labelledby="h-regmap">
+        <h3 id="h-regmap">Register map</h3>
+        <div class="sweepctl"><label class="hint" for="lgName">Name</label><input id="lgName" name="logic-name" type="text" spellcheck="false" autocomplete="off" value="${esc(rm.name)}" style="width:120px">
+          <label class="hint" for="lgSize">Window (bytes)</label><input id="lgSize" name="logic-size" type="number" inputmode="numeric" min="16" step="16" value="${rm.window_size}" style="width:90px">
+          <label class="hint" for="lgAcc">Access (ns)</label><input id="lgAcc" name="logic-access-ns" type="number" inputmode="decimal" min="0" step="1" value="${rm.access_ns ?? 4}" style="width:70px"></div>
+        <table class="regtbl"><colgroup><col class="c-name"><col class="c-off"><col class="c-acc"><col class="c-rst"><col class="c-fld"><col class="c-doc"><col class="c-del"></colgroup><thead><tr><th scope="col">Name</th><th scope="col">Offset</th><th scope="col">Access</th><th scope="col">Reset</th><th scope="col">Fields (name:lsb[:width])</th><th scope="col">Description</th><th scope="col"><span class="sr-only">Remove</span></th></tr></thead><tbody>
+        ${rm.registers.map((r, i) => `<tr>
+          <td><input aria-label="Name of register ${i + 1}" data-r="${i}" data-k="name" value="${esc(r.name)}" spellcheck="false" autocomplete="off"></td>
+          <td><input aria-label="Offset of ${esc(r.name)}" data-r="${i}" data-k="offset" value="0x${r.offset.toString(16).toUpperCase().padStart(3, '0')}" spellcheck="false" autocomplete="off"></td>
+          <td><select aria-label="Access of ${esc(r.name)}" data-r="${i}" data-k="access">${acc.map(a => `<option ${a === r.access ? 'selected' : ''}>${a}</option>`).join('')}</select></td>
+          <td><input aria-label="Reset value of ${esc(r.name)}" data-r="${i}" data-k="reset" value="${r.reset ?? 0}" spellcheck="false" autocomplete="off"></td>
+          <td><input aria-label="Fields of ${esc(r.name)}" data-r="${i}" data-k="fields" value="${esc(fieldsText(r))}" spellcheck="false" autocomplete="off"></td>
+          <td><input aria-label="Description of ${esc(r.name)}" data-r="${i}" data-k="doc" value="${esc(r.doc || '')}" autocomplete="off"></td>
+          <td><button type="button" class="btn" data-rdel="${i}" aria-label="Remove ${esc(r.name)}"><span aria-hidden="true">✕</span></button></td></tr>`).join('')}</tbody></table>
+        <p><button type="button" class="btn" id="lgAddReg">Add register</button></p>
+        <h3 id="h-params"><label for="lgParams">Model parameters</label></h3>
+        <textarea wrap="off" id="lgParams" name="logic-params" class="code" rows="4" spellcheck="false" placeholder="distance_mm = 30…">${esc(paramsText(rm.params))}</textarea>
+        <h3><label for="lgScript">Register script</label></h3>
+        <p class="hint">One step per line: <span class="mono" translate="no">write REG VALUE|FIELD</span>, <span class="mono" translate="no">read REG</span>, <span class="mono" translate="no">poll REG.FIELD</span>, <span class="mono" translate="no">expect REG[.FIELD] VALUE</span>, <span class="mono" translate="no">wait NS</span>.</p>
+        <textarea wrap="off" id="lgScript" name="logic-script" class="code" rows="10" spellcheck="false">${esc(c.logic.script || '')}</textarea>
+      </section>
+      <section aria-labelledby="h-model">
+        <div class="sweepctl"><h3 id="h-model" style="margin:0"><label for="lgModel">Python model</label></h3><span class="grow"></span>
+          <button type="button" class="btn" id="lgSkel">Insert skeleton</button></div>
+        <p class="hint">Registers already behave by their access type; override <span class="mono" translate="no">update</span>, <span class="mono" translate="no">on_write</span> or <span class="mono" translate="no">on_read</span>. Tab indents; press Esc, then Tab, to leave the editor.</p>
+        <textarea wrap="off" id="lgModel" name="logic-model" class="code" rows="18" spellcheck="false">${esc(c.logic.model || '')}</textarea>
+        <details id="lgHdrBox"><summary>Generated C header</summary><pre translate="no" id="lgHdr">Checking…</pre></details>
+        <h3>Last run</h3>${logicResults(c)}
+      </section>
+    </div>`;
+}
+async function bindLogic(){
+  const [c] = logicChip(); if (!c) return;
+  const lg = c.logic, rm = lg.regmap;
+  const commit = () => { LOGIC_CHECK.key = null; changed(); refreshLogicChecks(c); };
+  $('#lgChip').onchange = e => { LOGIC_SEL = e.target.value; renderTabs(true); };
+  $('#lgRemove').onclick = () => { const name = c.name; c.logic = null; LOGIC_SEL = null; changed(); renderTabs(true); toast(`Removed the chiplet logic from ${name}.`, {label: 'Undo', fn: () => { undo(); renderTabs(true); }}); };
+  $('#lgName').onchange = e => { rm.name = e.target.value.trim() || 'logic'; commit(); };
+  $('#lgSize').onchange = e => { rm.window_size = +e.target.value || 4096; commit(); };
+  $('#lgAcc').onchange = e => { rm.access_ns = +e.target.value || 0; commit(); };
+  document.querySelectorAll('.regtbl [data-r]').forEach(inp => inp.addEventListener('change', () => {
+    const r = rm.registers[+inp.dataset.r], k = inp.dataset.k, v = inp.value.trim();
+    if (k === 'offset' || k === 'reset'){ const n = Number(v); if (Number.isNaN(n)){ inp.setAttribute('aria-invalid', 'true'); toast(`Enter a number for the ${k} of ${r.name}, e.g. 0x10.`); return; } r[k] = n; }
+    else if (k === 'fields') r.fields = parseFields(v);
+    else r[k] = v;
+    inp.setAttribute('aria-invalid', 'false'); commit();
+  }));
+  document.querySelectorAll('[data-rdel]').forEach(b => b.onclick = () => { const r = rm.registers.splice(+b.dataset.rdel, 1)[0]; commit(); renderTabs(true);
+    toast(`Removed register ${r.name}.`, {label: 'Undo', fn: () => { undo(); renderTabs(true); }}); });
+  $('#lgAddReg').onclick = () => { const off = Math.max(-4, ...rm.registers.map(r => r.offset)) + 4;
+    rm.registers.push({name: `REG${rm.registers.length}`, offset: off, access: 'rw', reset: 0, doc: ''}); commit(); renderTabs(true);
+    document.querySelector(`.regtbl [data-r="${rm.registers.length - 1}"][data-k="name"]`)?.focus(); };
+  $('#lgParams').onchange = e => { rm.params = parseParams(e.target.value); commit(); };
+  $('#lgScript').onchange = e => { lg.script = e.target.value; commit(); };
+  $('#lgModel').onchange = e => { lg.model = e.target.value; commit(); };
+  $('#lgSkel').onclick = async () => { const d = await checkLogic(c);
+    if (!d.python_skeleton){ toast('Fix the register map first: the skeleton is generated from it.'); return; }
+    const had = (lg.model || '').trim();
+    lg.model = d.python_skeleton; commit(); renderTabs(true);
+    if (had) toast('Replaced the model with a skeleton.', {label: 'Undo', fn: () => { undo(); renderTabs(true); }}); };
+  for (const id of ['lgModel', 'lgScript', 'lgParams']){
+    const ta = document.getElementById(id); let escaped = false;
+    ta.addEventListener('keydown', e => {
+      if (e.key === 'Escape'){ escaped = true; return; }
+      if (e.key === 'Tab' && !escaped && id === 'lgModel'){ e.preventDefault(); const a = ta.selectionStart, b = ta.selectionEnd;
+        ta.value = ta.value.slice(0, a) + '    ' + ta.value.slice(b); ta.selectionStart = ta.selectionEnd = a + 4; }
+      escaped = false;
+    });
+  }
+  refreshLogicChecks(c);
+}
+async function refreshLogicChecks(c){
+  const d = await checkLogic(c);
+  const m = document.getElementById('lgMsgs'), h = document.getElementById('lgHdr');
+  if (m) m.innerHTML = d.errors?.length ? d.errors.map(e => `<p class="sev-error">⚠ ${esc(e)}</p>`).join('')
+                                         : `<p class="ok">✓ Register map, script (${(d.ops || []).length} steps) and model check out.</p>`;
+  if (h) h.textContent = d.c_header || 'Fix the register map to generate the header.';
 }
 
 // ============================================================ run
