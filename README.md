@@ -22,7 +22,8 @@ Choosing chiplet sizes, a package technology and die-to-die links is a physical 
 - Traffic flows routed on the lowest-latency path, with per-link utilisation and loaded latency
 - Sweeps over package technology, data rate, modules per link, layout spread or defect density
 - Harness VP runs: a firmware scenario per chiplet, and a two-die co-simulation per link that measures the round trip between the two chiplets' SMCs
-- Export of a bundle with the design, the analytic report, and a ready-to-run `smu-vp` ini and `run.sh` for every job
+- Generated Harness setup: a package address map (each chiplet's SMC global window), SMC inbound filter entries and the AoU bring-up order per link, as JSON and C headers that the link firmware boots with
+- Export of a bundle with the design, the analytic report, the generated setup, and a self-contained `run.sh` for every job
 - Undo and redo, full keyboard operation, and light and dark themes
 
 Design decisions for the UI are recorded in [`.impeccable.md`](.impeccable.md).
@@ -126,6 +127,7 @@ The composer drives `smu-vp`, the SMC + SEP virtual platform in tt-oca-harness-m
    | Links | Gap, channel length, lanes, bandwidth, load, utilisation, latency and shoreline per link |
    | Traffic | Each flow's path, zero-load and loaded latency, and the Harness VP estimate |
    | Dies & cost | Area, yield and cost per die, and the package |
+   | Harness config | The generated setup: address map, AoU bring-up per link, inbound filter entries and a header per chiplet |
    | Sweep | One parameter varied across values, as a chart and a table |
    | Run | The server log of the last run |
    | Harness VP | Per-chiplet scenario results and per-link latency probes |
@@ -167,7 +169,17 @@ The link latency injected into the VP is the AoU fixed latency plus the PHY late
 
 On `mdie-vp`, a round trip between the two SMCs takes about **66 ns + 2 × `bridge_delay_ns`**: one crossing each way, plus on-die paths and polling. Link runs use a 5 ns simulation quantum so that the link latency is visible. Even so, delays of a few ns read low (an 8 ns delay adds about 11 ns per round trip instead of 16).
 
-Each die programs its SMC global window (`0x4000_0000 + die × 64 MiB`) and opens an entry in its SMC inbound filter for the peer, as boot firmware would on silicon.
+### Generated Harness setup
+
+Before two chiplets can talk over the AoU, firmware has to get three things right. `backend/engines/config_gen.py` derives them from the design:
+
+| Setup | What the composer generates |
+|---|---|
+| Address map | Each chiplet gets a 32 MiB slot from `0x4000_0000`: its 16 MiB SMC global window, followed by its outbound remap windows. Eight chiplets fit below the SEP aperture at `0x5000_0000`; more is a design rule error. |
+| Inbound filters | The SMC inbound filter blocks everything by default. Each chiplet opens one entry for its mailbox page to the peers it links to. |
+| AoU bring-up | On each link, the chiplet earlier in the design activates the AoU, which also brings the peer up. The other waits for ENABLED before sending anything, so the activator's filter is already open. |
+
+Each link run gets two generated headers (`fw/oca_config_die0.h`, `fw/oca_config_die1.h`), which `firmware/oca-d2d-pingpong` boots with, and `mdie.die<k>.smc_global_base` keys in its ini for `mdie-vp`. The export bundle adds `config/package.json` and a header per chiplet.
 
 ### Project structure
 
@@ -176,8 +188,9 @@ backend/
   app.py                 HTTP API, run jobs, sweeps, bundle export
   catalog.py             chiplet templates, package technologies, defaults
   engines/analytic.py    analytic model
+  engines/config_gen.py  generated Harness setup (address map, filters, AoU roles)
   engines/harness_vp.py  Harness VP runner
-firmware/oca-d2d-pingpong/    SMC (one image per die) + SEP firmware for the two-die link run
+firmware/oca-d2d-pingpong/    two-die link firmware; reads the generated oca_config_die<N>.h
 firmware/oca-latency-probe/   single-die fallback probe
 frontend/index.html      the whole web UI
 upstream-pr/             the smu-vp INI fix as sent upstream (#284)

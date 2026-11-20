@@ -135,6 +135,9 @@ tbody th{font-weight:var(--w-body);color:var(--ink-2)}
 .rowbtn{border:0;background:none;padding:0;cursor:pointer;color:var(--cobalt);text-align:left;font-size:inherit}
 .rowbtn:hover{text-decoration:underline;text-underline-offset:2px}
 .objlist{list-style:none;margin:0;padding:0}
+.tabbody details{border-bottom:1px solid var(--rule-2);padding:var(--s-1) 0}
+.tabbody summary{cursor:pointer;color:var(--cobalt)}
+.tabbody details pre{margin:var(--s-2) 0;padding:var(--s-2) var(--s-3);background:var(--surface-2);border-radius:4px;overflow-x:auto}
 .objlist li{padding:3px 0}
 .sev-error{color:var(--err)}.sev-warning{color:var(--warn)}.ok{color:var(--ok)}
 pre{font-family:var(--mono);font-size:var(--text-xs);line-height:1.55;margin:0;white-space:pre-wrap}
@@ -780,7 +783,7 @@ function bindInspector(el, obj){
 }
 
 // ============================================================ bottom tabs
-const TABS = [['checks','Checks'],['links','Links'],['flows','Traffic'],['dies','Dies & cost'],['sweep','Sweep'],['run','Run'],['vp','Harness VP']];
+const TABS = [['checks','Checks'],['links','Links'],['flows','Traffic'],['dies','Dies & cost'],['config','Harness config'],['sweep','Sweep'],['run','Run'],['vp','Harness VP']];
 function renderTabs(){
   const n = EVAL ? EVAL.summary.errors + EVAL.summary.warnings : 0;
   const focusedTab = document.activeElement?.closest?.('#tabs') ? TAB : null;
@@ -796,7 +799,7 @@ function renderTabs(){
   const body = $('#tabbody');
   body.setAttribute('aria-labelledby', 'tab-' + TAB);
   if (body.contains(document.activeElement) && TAB === 'flows') return;
-  body.innerHTML = ({checks: tabChecks, links: tabLinks, flows: tabFlows, dies: tabDies, sweep: tabSweep, run: tabRun, vp: tabVP}[TAB])();
+  body.innerHTML = ({checks: tabChecks, links: tabLinks, flows: tabFlows, dies: tabDies, config: tabConfig, sweep: tabSweep, run: tabRun, vp: tabVP}[TAB])();
   if (TAB === 'flows') bindFlows();
   if (TAB === 'sweep') bindSweep();
   body.querySelectorAll('[data-sel]').forEach(b => b.onclick = () => { const [type, id] = b.dataset.sel.split(':'); SEL = {type, id}; render(); });
@@ -984,6 +987,47 @@ async function bindSweep(){
     renderTabs(); $('#swRun')?.focus();
   };
   drawSweep();
+}
+
+
+// ============================================================ generated Harness setup
+let CONFIG = {forJSON: null, data: null, busy: false};
+const hex = v => '0x' + Number(v).toString(16).toUpperCase().padStart(8, '0').replace(/(.{4})$/, '_$1');
+async function loadConfig(){
+  const body = CUR || JSON.stringify(D);
+  if (CONFIG.busy || CONFIG.forJSON === body) return;
+  CONFIG.busy = true;
+  try { const r = await fetch(API + '/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body});
+        CONFIG = {forJSON: body, data: r.ok ? await r.json() : null, busy: false}; }
+  catch { CONFIG.busy = false; }
+  if (TAB === 'config') renderTabs();
+}
+function tabConfig(){
+  const c = CONFIG.data;
+  if (!c || CONFIG.forJSON !== (CUR || JSON.stringify(D))){ loadConfig(); return '<span class="hint">Generating the Harness setup…</span>'; }
+  const nm = id => esc(c.address_map.find(r => r.chiplet === id)?.name ?? id);
+  const errs = c.issues.map(i => `<p class="sev-error">⚠ ${esc(i.message)}</p>`).join('');
+  return `<p class="hint">Generated from the design. Each Harness VP link run boots with this setup, and Export simulation bundle includes it
+      (<span class="mono" translate="no">config/package.json</span> and a header per chiplet). The SMC fabric's global window, its inbound filter
+      (which blocks everything by default) and the AoU activation order are what firmware has to get right before two chiplets can talk.</p>
+    ${errs}
+    <h3>Address map</h3>
+    <table><thead><tr><th scope="col">Chiplet</th><th scope="col">SMC global window</th><th scope="col">Outbound remap windows</th><th scope="col">Status</th></tr></thead><tbody>
+    ${c.address_map.map(r => `<tr><td>${esc(r.name)}</td><td class="mono" translate="no">${hex(r.smc_global_base)}–${hex(r.smc_global_end)}</td>
+      <td class="mono" translate="no">${hex(r.remap_windows[0])}–${hex(r.remap_windows[1])}</td>
+      <td class="${r.fits ? 'ok' : 'sev-error'}">${r.fits ? '✓ Fits' : '⚠ No slot left'}</td></tr>`).join('')}</tbody></table>
+    <p class="hint">32&nbsp;MiB per chiplet from <span class="mono" translate="no">0x4000_0000</span>, so ${c.limits.max_dies} chiplets fit below the SEP aperture at <span class="mono" translate="no">0x5000_0000</span>.</p>
+    <h3>AoU bring-up per link</h3>
+    ${c.links.length ? `<table><thead><tr><th scope="col">Link</th><th scope="col">Activates the AoU</th><th scope="col">Waits for ENABLED, then reports ready</th></tr></thead><tbody>
+      ${c.links.map(l => `<tr><td>${esc(l.initiator_name)} – ${esc(l.responder_name)}</td><td>${esc(l.initiator_name)}</td><td>${esc(l.responder_name)}</td></tr>`).join('')}</tbody></table>`
+      : '<p class="hint">No links yet.</p>'}
+    <h3>Inbound filter entries</h3>
+    <table><thead><tr><th scope="col">Chiplet</th><th scope="col">Entry</th><th scope="col">Range</th><th scope="col">Allows</th><th scope="col">FILTER_CONFIG</th></tr></thead><tbody>
+    ${Object.entries(c.inbound_filters).flatMap(([id, fs]) => fs.map(f => `<tr><td>${nm(id)}</td><td>${f.entry}</td>
+      <td class="mono" translate="no">${hex(f.start)}–${hex(f.end)}</td><td>${f.allows.map(esc).join(', ')}</td>
+      <td class="mono" translate="no">${hex(f.config)}</td></tr>`)).join('') || '<tr><td colspan="5" class="hint">No entries: add a link first.</td></tr>'}</tbody></table>
+    <h3>Generated headers</h3>
+    ${Object.entries(c.chiplet_headers || {}).map(([id, h]) => `<details><summary>${nm(id)}</summary><pre translate="no">${esc(h)}</pre></details>`).join('')}`;
 }
 
 // ============================================================ run

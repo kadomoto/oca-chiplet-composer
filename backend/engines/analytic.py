@@ -186,6 +186,8 @@ def validate(design: dict) -> list[dict]:
 
     phys, phy_issues = place_phys(design, pkg, chips)
     issues.extend(phy_issues)
+    from engines import config_gen            # Harness address-map capacity
+    issues.extend(config_gen.issues(design))
     ports_used = {c: 0 for c in chips}
     for l in design["links"]:
         if l["a"] not in chips or l["b"] not in chips:

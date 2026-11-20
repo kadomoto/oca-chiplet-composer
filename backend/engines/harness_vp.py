@@ -33,10 +33,13 @@ from __future__ import annotations
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+from . import config_gen
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
@@ -51,6 +54,7 @@ PROBE_TICK_NS = 10.0
 PROBE_SIM_MS = 5
 MDIE_VP = Path(os.environ.get("OCA_MDIE_VP", MODEL_ROOT / "vp" / "build_smc" / "bin" / "mdie-vp"))
 D2D_DIR = ROOT / "firmware" / "oca-d2d-pingpong"
+D2D_SOURCES = ("Makefile", "smc.mk", "sep.mk", "smc_main.c", "smc_die0.c", "smc_die1.c", "sep_main.c")
 D2D_SIM_MS = 20
 D2D_QUANTUM = {"dut.cluster.quantum_insts": 5, "global_quantum_ns": 5}   # finer = closer to the injected delay, slower
 D2D_TICK_NS = 1.0
@@ -104,6 +108,7 @@ def _mdie_ok() -> bool:
 
 # --------------------------------------------------------------------------- ini
 def _ini(delay_ns: float, header: str, tick_ns: float | None = None, uints: dict | None = None) -> str:
+    """smu-vp / mdie-vp SMC ini: the model's default plus the composer's overrides."""
     base = BASE_SMC_INI.read_text() if BASE_SMC_INI.is_file() else ""
     s = (base.rstrip() + "\n\n"
          "# ---- injected by OCA Chiplet Composer -----------------------------\n"
@@ -114,7 +119,7 @@ def _ini(delay_ns: float, header: str, tick_ns: float | None = None, uints: dict
     if tick_ns is not None:
         s += f"dut.clint.tick_period_ns     : {tick_ns}\n"
     if uints:
-        s += "[uint]\n" + "".join(f"{k} : {v}\n" for k, v in uints.items())
+        s += "[uint]\n" + "".join(f"{k} : {hex(v) if isinstance(v, int) and v > 0xFFFF else v}\n" for k, v in uints.items())
     return s
 
 
@@ -146,27 +151,55 @@ def plan(design: dict, analytic: dict, workdir: Path) -> dict:
             "uses_aou": _uses_aou(scen)})
 
     d2d = _mdie_ok()
+    pkg = config_gen.package_config(design)
     link_jobs = []
     for l in analytic["links"]:
         d = workdir / "links" / l["id"]
         d.mkdir(parents=True, exist_ok=True)
         ini = d / "smc_smu_vp.ini"
-        hdr = (f"link {names.get(l['a'])} (die0) <-> {names.get(l['b'])} (die1), "
-               f"channel {l['channel_mm']} mm")
-        ini.write_text(_ini(l["aou_bridge_delay_ns"], hdr, D2D_TICK_NS if d2d else PROBE_TICK_NS, D2D_QUANTUM if d2d else None))
+        run = config_gen.link_run(design, pkg, l["id"]) if d2d else None
+        if run:
+            # generated setup: this pair's address windows, inbound filters and AoU roles
+            fw = d / "fw"
+            fw.mkdir(exist_ok=True)
+            for f in D2D_SOURCES:
+                shutil.copy2(D2D_DIR / f, fw / f)
+            for k in (0, 1):
+                (fw / f"oca_config_die{k}.h").write_text(run["headers"][k])
+            dies = [r["name"] for r in run["dies"]]
+            hdr = (f"link {dies[0]} (die0, initiator) <-> {dies[1]} (die1), channel {l['channel_mm']} mm; "
+                   f"SMC global windows {hex(run['ini']['mdie.die0.smc_global_base'])} / "
+                   f"{hex(run['ini']['mdie.die1.smc_global_base'])}")
+            ini.write_text(_ini(l["aou_bridge_delay_ns"], hdr, D2D_TICK_NS, {**D2D_QUANTUM, **run["ini"]}))
+            fw_dir = fw
+        else:
+            dies = [names.get(l["a"]), names.get(l["b"])]
+            ini.write_text(_ini(l["aou_bridge_delay_ns"], f"link {dies[0]} <-> {dies[1]}, channel {l['channel_mm']} mm",
+                                PROBE_TICK_NS))
+            fw_dir = PROBE_DIR
         link_jobs.append({
-            "kind": "link", "mode": "d2d" if d2d else "probe", "link": l["id"],
-            "name": f"{names.get(l['a'])}↔{names.get(l['b'])}",
-            "dies": [names.get(l["a"]), names.get(l["b"])],
+            "kind": "link", "mode": "d2d" if run else "probe", "link": l["id"],
+            "name": f"{names.get(l['a'])}↔{names.get(l['b'])}", "dies": dies,
             "bridge_delay_ns": l["aou_bridge_delay_ns"], "ini": str(ini),
-            "fw_dir": str(D2D_DIR if d2d else PROBE_DIR), "dir": str(d),
-            "sim_ms": D2D_SIM_MS if d2d else PROBE_SIM_MS})
+            "fw_dir": str(fw_dir), "dir": str(d),
+            "sim_ms": D2D_SIM_MS if run else PROBE_SIM_MS})
 
     for j in chip_jobs + link_jobs:
-        Path(j["dir"], "run.sh").write_text(
-            "#!/usr/bin/env bash\n# Rebuild firmware with `make` in fw_dir first.\nset -e\n"
-            f"cd {shlex.quote(j['fw_dir'])}\n" + shlex.join(_cmd(j)) + "\n")
-    return {"chiplets": chip_jobs, "links": link_jobs}
+        if j.get("mode") == "d2d":
+            # self-contained: builds the generated firmware next to it, so it survives the export zip
+            script = ("#!/usr/bin/env bash\n# Two-die link run on mdie-vp with the composer's generated setup (fw/oca_config_die*.h).\n"
+                      "set -e\nHERE=$(cd \"$(dirname \"$0\")\" && pwd)\n"
+                      f": \"${{MODEL_ROOT:={MODEL_ROOT}}}\"\n"
+                      f": \"${{MDIE_VP:=$MODEL_ROOT/vp/build_smc/bin/mdie-vp}}\"\n"
+                      "make -C \"$HERE/fw\" -s MODEL_ROOT=\"$MODEL_ROOT\"\n"
+                      "cd \"$HERE/fw\"\n"
+                      f"\"$MDIE_VP\" \"$HERE/smc_smu_vp.ini\" \"$MODEL_ROOT/vp/platform/smu/config/sep_smu_config.ini\" {j['sim_ms']} "
+                      "\"$HERE/fw/oca_d2d_smc0\" \"$HERE/fw/oca_d2d_sep\" \"$HERE/fw/oca_d2d_smc1\" \"$HERE/fw/oca_d2d_sep\"\n")
+        else:
+            script = ("#!/usr/bin/env bash\n# Rebuild firmware with `make` in fw_dir first.\nset -e\n"
+                      f"cd {shlex.quote(j['fw_dir'])}\n" + shlex.join(_cmd(j)) + "\n")
+        Path(j["dir"], "run.sh").write_text(script)
+    return {"chiplets": chip_jobs, "links": link_jobs, "config": pkg}
 
 
 def _elves(fw_dir: Path):
@@ -277,6 +310,11 @@ def _get_baseline(mode: str, log, cancelled) -> dict | None:
         ini = d / "smc_smu_vp.ini"
         d2d = mode == "d2d"
         ini.write_text(_ini(0.0, "baseline: bridge_delay_ns = 0", D2D_TICK_NS if d2d else PROBE_TICK_NS, D2D_QUANTUM if d2d else None))
+        if d2d:  # the default two-die map that firmware/oca-d2d-pingpong's own headers describe
+            ini.write_text(_ini(0.0, "baseline: bridge_delay_ns = 0", D2D_TICK_NS,
+                                {**D2D_QUANTUM, "mdie.die0.smc_global_base": config_gen.GLOBAL_BASE0,
+                                 "mdie.die1.smc_global_base": config_gen.GLOBAL_BASE0 + config_gen.FOOTPRINT}))
+            _build(D2D_DIR, log)
         r = _exec({"kind": "baseline", "mode": mode, "name": "baseline", "ini": str(ini),
                    "fw_dir": str(D2D_DIR if d2d else PROBE_DIR), "dir": str(d),
                    "sim_ms": D2D_SIM_MS if d2d else PROBE_SIM_MS}, log, cancelled, quiet=True)
@@ -336,4 +374,5 @@ def run(design: dict, analytic: dict, workdir: Path, log=print, cancelled=lambda
     with ThreadPoolExecutor(max_workers=workers) as ex:
         chips = list(ex.map(one, p["chiplets"]))
         links = list(ex.map(one, p["links"]))
-    return {"available": True, "jobs": chips, "links": links, "baseline": base, "link_mode": mode}
+    return {"available": True, "jobs": chips, "links": links, "baseline": base, "link_mode": mode,
+            "config": p["config"]}

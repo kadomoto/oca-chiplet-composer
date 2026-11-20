@@ -212,6 +212,17 @@ def sweep(req: SweepRequest):
     return {"param": req.param, "label": SWEEPS[req.param]["label"], "rows": rows}
 
 
+@app.post("/api/config")
+def harness_config(design: Design):
+    """Generated Harness setup: address map, inbound filters, AoU roles, headers."""
+    from engines import config_gen
+    d = design.model_dump()
+    pkg = config_gen.package_config(d)
+    pkg["chiplet_headers"] = {r["chiplet"]: config_gen.chiplet_header(pkg, r["chiplet"])
+                              for r in pkg["address_map"] if r["fits"]}
+    return pkg
+
+
 @app.post("/api/runs")
 def create_run(req: RunRequest):
     unknown = set(req.engines) - {"analytic", "harness-vp"}
@@ -277,6 +288,17 @@ def export(design: Design):
             sub = f"chiplets/{j['chiplet']}" if j["kind"] == "chiplet" else f"links/{j['link']}"
             for f in ("smc_smu_vp.ini", "run.sh"):
                 z.write(Path(j["dir"]) / f, f"vp/{sub}/{f}")
+            fw = Path(j["dir"]) / "fw"
+            if fw.is_dir():   # generated two-die firmware sources + headers for this link
+                for f in sorted(fw.iterdir()):
+                    if f.is_file() and f.suffix in (".h", ".c", ".mk") or f.name == "Makefile":
+                        z.write(f, f"vp/{sub}/fw/{f.name}")
+        from engines import config_gen
+        cfg = p["config"]
+        z.writestr("config/package.json", json.dumps(cfg, indent=2))
+        for r in cfg["address_map"]:
+            if r["fits"]:
+                z.writestr(f"config/{r['chiplet']}.h", config_gen.chiplet_header(cfg, r["chiplet"]))
     buf.seek(0)
     fname = f"{d['name'] or 'design'}-oca.zip".replace(" ", "_")
     return StreamingResponse(buf, media_type="application/zip",
